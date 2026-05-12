@@ -1,0 +1,165 @@
+{
+  "name": "pilotcode",
+  "displayName": "PilotCode",
+  "description": "Local-first, offline-capable Copilot clone for VS Code powered by Qwen / Ollama / any OpenAI-compatible endpoint. Inline completions, chat, agentic mode, and full MCP support.",
+  "version": "0.1.0",
+  "publisher": "chandru-kumar",
+  "private": true,
+  "license": "MIT",
+  "author": {
+    "name": "Chandru Kumar",
+    "email": "chandru.dec26@gmail.com"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/chandru-kumar/vs-code-plugin.git"
+  },
+  "bugs": {
+    "url": "https://github.com/chandru-kumar/vs-code-plugin/issues"
+  },
+  "homepage": "https://github.com/chandru-kumar/vs-code-plugin#readme",
+  "engines": {
+    "vscode": "^1.95.0"
+  },
+  "categories": [
+    "AI",
+    "Chat",
+    "Programming Languages",
+    "Machine Learning",
+    "Other"
+  ],
+  "keywords": [
+    "ai",
+    "copilot",
+    "qwen",
+    "ollama",
+    "lm studio",
+    "mcp",
+    "agent",
+    "local llm",
+    "code completion",
+    "chat"
+  ],
+  "main": "./dist/extension.js",
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "contributes": {
+    "chatParticipants": [
+      {
+        "id": "pilotcode.chat",
+        "name": "pilotcode",
+        "fullName": "PilotCode",
+        "description": "Local-first AI coding assistant powered by Qwen / Ollama.",
+        "isSticky": true
+      }
+    ],
+    "commands": [
+      {
+        "command": "pilotcode.openSettings",
+        "title": "PilotCode: Open Settings",
+        "category": "PilotCode"
+      },
+      {
+        "command": "pilotcode.showOutput",
+        "title": "PilotCode: Show Output Channel",
+        "category": "PilotCode"
+      },
+      {
+        "command": "pilotcode.testConnection",
+        "title": "PilotCode: Test Model Endpoint Connection",
+        "category": "PilotCode"
+      }
+    ],
+    "configuration": {
+      "title": "PilotCode",
+      "properties": {
+        "pilotcode.endpoint": {
+          "type": "string",
+          "default": "http://localhost:11434/v1",
+          "description": "OpenAI-compatible base URL. Examples: Ollama -> http://localhost:11434/v1 ; LM Studio -> http://localhost:1234/v1 ; vLLM -> http://localhost:8000/v1",
+          "order": 1
+        },
+        "pilotcode.apiKey": {
+          "type": "string",
+          "default": "",
+          "description": "API key (only required for remote/cloud endpoints; leave empty for local Ollama/LM Studio).",
+          "order": 2
+        },
+        "pilotcode.chatModel": {
+          "type": "string",
+          "default": "qwen2.5-coder:7b",
+          "description": "Model name to use for chat & agentic tasks. Examples: qwen2.5-coder:7b, qwen3-coder:14b, llama3.1:8b.",
+          "order": 3
+        },
+        "pilotcode.completionModel": {
+          "type": "string",
+          "default": "qwen2.5-coder:1.5b-base",
+          "description": "Smaller model used for fast inline (ghost-text) completions. A *base* model (not instruct) is recommended.",
+          "order": 4
+        },
+        "pilotcode.maxContextTokens": {
+          "type": "number",
+          "default": 8192,
+          "minimum": 1024,
+          "maximum": 131072,
+          "description": "Maximum number of tokens of context (prompt + completion) the model can handle.",
+          "order": 5
+        },
+        "pilotcode.temperature": {
+          "type": "number",
+          "default": 0.2,
+          "minimum": 0,
+          "maximum": 2,
+          "description": "Sampling temperature for chat responses. Lower = more deterministic.",
+          "order": 6
+        },
+        "pilotcode.enableInlineCompletions": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable inline ghost-text completions. (Implemented in Phase 2.)",
+          "order": 7
+        },
+        "pilotcode.enableTelemetry": {
+          "type": "boolean",
+          "default": false,
+          "description": "PilotCode is offline-first and ships with telemetry OFF. Toggle on only if you want to help improve the extension.",
+          "order": 8
+        },
+        "pilotcode.logLevel": {
+          "type": "string",
+          "enum": [
+            "trace",
+            "debug",
+            "info",
+            "warn",
+            "error"
+          ],
+          "default": "info",
+          "description": "Verbosity for the PilotCode output channel.",
+          "order": 9
+        }
+      }
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run package",
+    "compile": "node esbuild.js",
+    "watch": "node esbuild.js --watch",
+    "package": "node esbuild.js --production",
+    "check-types": "tsc --noEmit",
+    "lint": "eslint src --ext ts",
+    "format": "prettier --write \"src/**/*.ts\"",
+    "test": "echo \"Tests added in later phases\" && exit 0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.14.0",
+    "@types/vscode": "^1.95.0",
+    "@typescript-eslint/eslint-plugin": "^7.18.0",
+    "@typescript-eslint/parser": "^7.18.0",
+    "esbuild": "^0.23.1",
+    "eslint": "^8.57.0",
+    "prettier": "^3.3.3",
+    "typescript": "^5.6.2"
+  }
+}
