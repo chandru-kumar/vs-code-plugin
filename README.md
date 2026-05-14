@@ -5,7 +5,7 @@
 > endpoint. Inline completions, full chat sidebar, agentic tool-calling,
 > and native Model Context Protocol (MCP) support.
 
-**Status:** Phase 1 of 8 — scaffolding + `@pilotcode` chat participant + settings.
+**Status:** Phase 2 of 8 — inline ghost-text completions (debounced, context-aware, FIM + instruct, multi-suggestion).
 
 ---
 
@@ -16,7 +16,7 @@
 | Works fully offline           | ✅                                     | ❌             |
 | Bring-your-own model          | ✅ (any OpenAI-compatible endpoint)    | ❌             |
 | Zero telemetry by default     | ✅                                     | ❌             |
-| Inline ghost-text completions | ✅ (Phase 2)                           | ✅             |
+| Inline ghost-text completions | ✅ **(done — Phase 2)**                | ✅             |
 | Chat participant + sidebar    | ✅ `@pilotcode`                        | ✅             |
 | Agentic tool-calling loop     | ✅ (Phase 4)                           | ✅             |
 | MCP client + MCP Apps         | ✅ (Phase 5)                           | ✅             |
@@ -28,8 +28,8 @@
 
 ## Phased roadmap
 
-- [x] **Phase 1** — Scaffolding, chat participant, settings, output channel, F5 debug ← **you are here**
-- [ ] **Phase 2** — Inline ghost-text completions (debounced, context-aware, multi-suggestion)
+- [x] **Phase 1** — Scaffolding, chat participant, settings, output channel, F5 debug
+- [x] **Phase 2** — Inline ghost-text completions (debounced, context-aware, multi-suggestion) ← **you are here**
 - [ ] **Phase 3** — Qwen / OpenAI-compatible streaming chat client
 - [ ] **Phase 4** — ReAct agentic loop + tool-calling + self-correction
 - [ ] **Phase 5** — MCP consumption (discover, connect, MCP Apps UI in chat)
@@ -164,25 +164,109 @@ If all 10 pass, Phase 1 is verified.
 
 ---
 
+## ✨ Phase 2 — Inline completions (ghost text)
+
+Phase 2 adds Copilot-style ghost text: as you type, PilotCode asks your
+local model to complete the code at the cursor and shows the suggestion
+inline. Press **Tab** to accept, **Esc** to dismiss, **Alt+]** / **Alt+[**
+to cycle alternatives.
+
+### How it works
+
+- **Two prompting strategies, auto-selected** by `pilotcode.completionStrategy`:
+  - `fim` — fill-in-the-middle via `/completions`, for `*-base` / `*-coder`
+    models (e.g. `qwen2.5-coder:1.5b-base`). Highest quality for code.
+  - `instruct` — a completion-style prompt via `/chat/completions`, works
+    with any chat model (`qwen3.5:latest`, `qwen3.6:latest`, `llama3.1`, …).
+  - `auto` (default) picks `fim` when the model name contains `base`/`coder`,
+    otherwise `instruct`.
+- **Debounced** (`pilotcode.completionDebounceMs`, default 250 ms) so the
+  local model isn't hammered on every keystroke; superseded requests are
+  cancelled and their network calls aborted.
+- **Context-aware** — sends N lines before/after the cursor
+  (`completionPrefixLines` / `completionSuffixLines`), hard-capped by
+  `completionMaxContextChars`.
+- **Multi-suggestion** — set `pilotcode.completionCount` to 2–3 for
+  alternatives (parallel requests; slower on local models).
+- **Status bar item** — bottom-right `$(rocket) PilotCode` (idle),
+  `$(loading~spin) PilotCode` (generating), `$(circle-slash) PilotCode`
+  (disabled). Click it to toggle completions.
+
+> **Which model?** Your machine has `qwen3.5:latest` / `qwen3.6:latest`
+> (chat models) → `auto` resolves to **instruct** mode and works out of the
+> box. For noticeably sharper completions, pull a base coder model and
+> point `pilotcode.completionModel` at it:
+> ```powershell
+> ollama pull qwen2.5-coder:1.5b-base
+> ```
+> then set `pilotcode.completionModel` = `qwen2.5-coder:1.5b-base`
+> (`auto` will switch to FIM mode automatically).
+
+### Manual test checklist for Phase 2 (Windows)
+
+Do these in the **Extension Development Host** window, with Ollama running.
+
+| #  | Action                                                                                          | Expected                                                                          |
+| -- | ----------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------- |
+| 1  | `git pull` the `feature/inline-completions` branch, `npm install`, `npm run compile`            | Clean build, `dist/extension.js` updated                                          |
+| 2  | Press **F5**                                                                                    | Extension Development Host opens; bottom-right shows **`$(rocket) PilotCode`**     |
+| 3  | First set `pilotcode.completionModel` to `qwen3.6:latest` (a model you actually have)           | Setting saved (no reload needed)                                                  |
+| 4  | Create a new file `test.js`, type `function add(a, b) {` and press **Enter**                    | After ~0.3–2 s, grey ghost text appears suggesting the body                       |
+| 5  | Press **Tab**                                                                                   | Ghost text is inserted as real code                                               |
+| 6  | Type a comment `// reverse a string` then Enter                                                 | Ghost text suggests a reverse-string implementation                               |
+| 7  | While ghost text is showing, keep typing                                                        | Old suggestion is dropped, a new one is requested (debounced) — no lag/freeze      |
+| 8  | Watch the status bar while a completion generates                                               | It briefly shows **`$(loading~spin) PilotCode`**, then back to `$(rocket)`         |
+| 9  | `Ctrl+Shift+P` → *PilotCode: Toggle Inline Completions* (or click the status bar item)          | Toast confirms "disabled"; status bar shows **`$(circle-slash) PilotCode`**; typing produces no ghost text |
+| 10 | Toggle it back on; set `pilotcode.completionCount` to `3`, type a function signature, press **Alt+]** | Cycles through up to 3 alternative completions                              |
+| 11 | `Ctrl+Shift+P` → *PilotCode: Show Output Channel*, set `pilotcode.logLevel` to `debug`, type to trigger a completion | Log shows lines like `inline: 1 suggestion(s) in NNNms (instruct)`     |
+| 12 | Set `pilotcode.completionModel` to a non-existent model, type to trigger                        | No ghost text, no crash; Output channel logs an HTTP 404 error                    |
+
+If 1–11 pass, Phase 2 is verified. (Step 12 just confirms graceful failure.)
+
+**Please paste the Output channel logs** (with `logLevel` = `debug`) after
+running through this — especially the `inline: … (instruct)` lines and any
+errors — so I can verify timing/strategy on your Windows box.
+
+### Phase 2 troubleshooting
+
+| Symptom | Fix |
+| --- | --- |
+| No ghost text at all | Check the status bar isn't `$(circle-slash)`; check `pilotcode.completionModel` is a model you actually have (`ollama list`); check Output channel for errors. |
+| Ghost text is very slow | Lower `completionMaxTokens` (e.g. 128), use a smaller model, or raise `completionDebounceMs`. Local model speed is the bottleneck. |
+| Completions repeat the code after the cursor | You're on a chat model in `instruct` mode — try a `*-coder` model with `auto`/`fim`. The suffix-overlap trimmer handles most cases but FIM is cleaner. |
+| Completions are chatty / include prose | Same as above — chat models sometimes ignore the "code only" instruction. A base/coder model in FIM mode fixes this. |
+| Completions wrapped in ```` ``` ```` fences | The instruct-output cleaner strips a single fence; if you still see them, the model added prose around it — switch to a coder model. |
+
+---
+
 ## Project layout
 
 ```
 vs-code-plugin/
-├── .github/workflows/ci.yml      # Build matrix (Win + Linux + macOS)
+├── .github/workflows/ci.yml         # Build matrix (Win + Linux + macOS)
 ├── .vscode/
-│   ├── launch.json               # F5 debug
-│   ├── tasks.json                # npm: watch as default build task
-│   ├── extensions.json           # Recommended dev extensions
-│   └── settings.json             # Project formatting
+│   ├── launch.json                  # F5 debug
+│   ├── tasks.json                   # npm: watch as default build task
+│   ├── extensions.json              # Recommended dev extensions
+│   └── settings.json                # Project formatting
 ├── src/
-│   ├── extension.ts              # activate() / deactivate()
-│   ├── chat/participant.ts       # @pilotcode chat participant
-│   ├── config/settings.ts        # typed settings reader + change listener
-│   └── utils/logger.ts           # Level-aware LogOutputChannel wrapper
-├── esbuild.js                    # Bundler
-├── package.json                  # Manifest + contributes
-├── tsconfig.json                 # Strict TS config
-└── README.md                     # This file
+│   ├── extension.ts                 # activate() / deactivate(), commands
+│   ├── chat/
+│   │   └── participant.ts           # @pilotcode chat participant
+│   ├── completions/                 # ── Phase 2 ──
+│   │   ├── inlineProvider.ts         #   InlineCompletionItemProvider
+│   │   ├── contextGatherer.ts        #   prefix/suffix windowing
+│   │   ├── promptStrategies.ts       #   FIM + instruct prompts, post-proc
+│   │   └── debouncer.ts              #   debounce + cancellation
+│   ├── model/
+│   │   └── completionClient.ts       #   HTTP client (FIM + instruct)
+│   ├── config/settings.ts           # typed settings reader + change listener
+│   ├── ui/statusBar.ts              # status-bar indicator (Phase 2)
+│   └── utils/logger.ts              # Level-aware LogOutputChannel wrapper
+├── esbuild.js                       # Bundler
+├── package.json                     # Manifest + contributes
+├── tsconfig.json                    # Strict TS config
+└── README.md                        # This file
 ```
 
 ---

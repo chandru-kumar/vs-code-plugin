@@ -1,11 +1,19 @@
 import * as vscode from 'vscode';
 import { Logger } from './utils/logger';
-import { readSettings, onSettingsChanged, CONFIG_SECTION } from './config/settings';
+import {
+  readSettings,
+  onSettingsChanged,
+  CONFIG_SECTION,
+} from './config/settings';
 import { registerChatParticipant } from './chat/participant';
+import { StatusBar } from './ui/statusBar';
+import { PilotCodeInlineProvider } from './completions/inlineProvider';
 
 let logger: Logger | undefined;
 
-export async function activate(context: vscode.ExtensionContext): Promise<void> {
+export async function activate(
+  context: vscode.ExtensionContext
+): Promise<void> {
   logger = new Logger('PilotCode');
   context.subscriptions.push({ dispose: () => logger?.dispose() });
 
@@ -15,25 +23,51 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     version: context.extension.packageJSON.version,
     endpoint: settings.endpoint,
     chatModel: settings.chatModel,
+    completionModel: settings.completionModel,
   });
 
+  // --- Phase 1: chat participant -----------------------------------------
+  registerChatParticipant(context, logger);
+
+  // --- Phase 2: inline completions ---------------------------------------
+  const statusBar = new StatusBar();
+  const inlineProvider = new PilotCodeInlineProvider(
+    readSettings,
+    logger,
+    statusBar
+  );
+  statusBar.applySettings(settings);
+
+  context.subscriptions.push(
+    statusBar,
+    { dispose: () => inlineProvider.dispose() },
+    vscode.languages.registerInlineCompletionItemProvider(
+      [{ scheme: 'file' }, { scheme: 'untitled' }],
+      inlineProvider
+    )
+  );
+
+  // --- React to settings changes -----------------------------------------
   context.subscriptions.push(
     onSettingsChanged((next) => {
       logger?.setLevel(next.logLevel);
+      inlineProvider.updateDebounce(next.completionDebounceMs);
+      statusBar.applySettings(next);
       logger?.info('Settings changed', {
         endpoint: next.endpoint,
         chatModel: next.chatModel,
+        completionModel: next.completionModel,
+        inlineCompletions: next.enableInlineCompletions,
       });
     })
   );
 
-  registerChatParticipant(context, logger);
-
+  // --- Commands ----------------------------------------------------------
   context.subscriptions.push(
     vscode.commands.registerCommand('pilotcode.openSettings', () => {
       void vscode.commands.executeCommand(
         'workbench.action.openSettings',
-        `@ext:chandru-kumar.pilotcode`
+        '@ext:chandru-kumar.pilotcode'
       );
     }),
     vscode.commands.registerCommand('pilotcode.showOutput', () => {
@@ -41,7 +75,22 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     }),
     vscode.commands.registerCommand('pilotcode.testConnection', async () => {
       await testConnectionCommand(logger!);
-    })
+    }),
+    vscode.commands.registerCommand(
+      'pilotcode.toggleInlineCompletions',
+      async () => {
+        const cfg = vscode.workspace.getConfiguration(CONFIG_SECTION);
+        const current = cfg.get<boolean>('enableInlineCompletions', true);
+        await cfg.update(
+          'enableInlineCompletions',
+          !current,
+          vscode.ConfigurationTarget.Global
+        );
+        void vscode.window.showInformationMessage(
+          `PilotCode inline completions ${!current ? 'enabled' : 'disabled'}.`
+        );
+      }
+    )
   );
 
   logger.info('PilotCode activated.');
@@ -67,7 +116,9 @@ async function testConnectionCommand(log: Logger): Promise<void> {
       token.onCancellationRequested(() => controller.abort());
 
       try {
-        const headers: Record<string, string> = { Accept: 'application/json' };
+        const headers: Record<string, string> = {
+          Accept: 'application/json',
+        };
         if (s.apiKey) {
           headers.Authorization = `Bearer ${s.apiKey}`;
         }
@@ -75,7 +126,9 @@ async function testConnectionCommand(log: Logger): Promise<void> {
         if (!res.ok) {
           throw new Error(`HTTP ${res.status} ${res.statusText}`);
         }
-        const body = (await res.json()) as { data?: Array<{ id: string }> };
+        const body = (await res.json()) as {
+          data?: Array<{ id: string }>;
+        };
         const ids = (body.data ?? []).map((m) => m.id);
         log.info(`Endpoint OK. ${ids.length} model(s) available.`, ids);
 
@@ -95,7 +148,7 @@ async function testConnectionCommand(log: Logger): Promise<void> {
         if (choice === 'Open Settings') {
           await vscode.commands.executeCommand(
             'workbench.action.openSettings',
-            `@ext:chandru-kumar.${CONFIG_SECTION === 'pilotcode' ? 'pilotcode' : CONFIG_SECTION}`
+            '@ext:chandru-kumar.pilotcode'
           );
         } else if (choice === 'Show Logs') {
           log.show();

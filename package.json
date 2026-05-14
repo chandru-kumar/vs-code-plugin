@@ -2,7 +2,7 @@
   "name": "pilotcode",
   "displayName": "PilotCode",
   "description": "Local-first, offline-capable Copilot clone for VS Code powered by Qwen / Ollama / any OpenAI-compatible endpoint. Inline completions, chat, agentic mode, and full MCP support.",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "publisher": "chandru-kumar",
   "private": true,
   "license": "MIT",
@@ -69,6 +69,11 @@
         "command": "pilotcode.testConnection",
         "title": "PilotCode: Test Model Endpoint Connection",
         "category": "PilotCode"
+      },
+      {
+        "command": "pilotcode.toggleInlineCompletions",
+        "title": "PilotCode: Toggle Inline Completions",
+        "category": "PilotCode"
       }
     ],
     "configuration": {
@@ -117,7 +122,7 @@
         "pilotcode.enableInlineCompletions": {
           "type": "boolean",
           "default": true,
-          "description": "Enable inline ghost-text completions. (Implemented in Phase 2.)",
+          "description": "Enable inline ghost-text completions (press Tab to accept, Alt+] / Alt+[ to cycle suggestions).",
           "order": 7
         },
         "pilotcode.enableTelemetry": {
@@ -138,6 +143,84 @@
           "default": "info",
           "description": "Verbosity for the PilotCode output channel.",
           "order": 9
+        },
+        "pilotcode.completionStrategy": {
+          "type": "string",
+          "enum": [
+            "auto",
+            "fim",
+            "instruct"
+          ],
+          "enumDescriptions": [
+            "Auto-detect: use fill-in-the-middle for *-base / *-coder models, instruct prompting otherwise.",
+            "Force fill-in-the-middle (FIM). Requires a model trained with FIM tokens, e.g. qwen2.5-coder:*-base.",
+            "Force instruct prompting via /chat/completions. Works with any chat model (qwen3.5, qwen3.6, llama3.1, ...)."
+          ],
+          "default": "auto",
+          "description": "How inline completions are prompted. 'auto' is recommended.",
+          "order": 10
+        },
+        "pilotcode.completionDebounceMs": {
+          "type": "number",
+          "default": 250,
+          "minimum": 0,
+          "maximum": 2000,
+          "description": "Idle time (ms) to wait after the last keystroke before requesting a completion. Lower = snappier but more requests.",
+          "order": 11
+        },
+        "pilotcode.completionMaxTokens": {
+          "type": "number",
+          "default": 256,
+          "minimum": 16,
+          "maximum": 2048,
+          "description": "Maximum tokens generated per inline completion.",
+          "order": 12
+        },
+        "pilotcode.completionTemperature": {
+          "type": "number",
+          "default": 0.1,
+          "minimum": 0,
+          "maximum": 2,
+          "description": "Sampling temperature for inline completions. Low values keep completions deterministic.",
+          "order": 13
+        },
+        "pilotcode.completionPrefixLines": {
+          "type": "number",
+          "default": 80,
+          "minimum": 0,
+          "maximum": 1000,
+          "description": "How many lines *before* the cursor to include as context.",
+          "order": 14
+        },
+        "pilotcode.completionSuffixLines": {
+          "type": "number",
+          "default": 40,
+          "minimum": 0,
+          "maximum": 1000,
+          "description": "How many lines *after* the cursor to include as context.",
+          "order": 15
+        },
+        "pilotcode.completionMaxContextChars": {
+          "type": "number",
+          "default": 8000,
+          "minimum": 500,
+          "maximum": 64000,
+          "description": "Hard cap on prefix+suffix characters sent to the model. Text closest to the cursor is kept.",
+          "order": 16
+        },
+        "pilotcode.completionMultiline": {
+          "type": "boolean",
+          "default": true,
+          "description": "Allow multi-line completions. When off, completions are truncated at the first newline.",
+          "order": 17
+        },
+        "pilotcode.completionCount": {
+          "type": "number",
+          "default": 1,
+          "minimum": 1,
+          "maximum": 3,
+          "description": "Number of alternative suggestions to request (cycle with Alt+] / Alt+[). >1 issues parallel requests and is slower on local models.",
+          "order": 18
         }
       }
     }
