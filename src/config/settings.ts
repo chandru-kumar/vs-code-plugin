@@ -26,6 +26,8 @@ export interface PilotCodeSettings {
   completionMaxContextChars: number;
   completionMultiline: boolean;
   completionCount: number;
+  // --- Phase 3: chat + warmup ---
+  prewarmOnActivation: boolean;
 }
 
 export function readSettings(): PilotCodeSettings {
@@ -81,6 +83,7 @@ export function readSettings(): PilotCodeSettings {
     ),
     completionMultiline: cfg.get<boolean>('completionMultiline', true),
     completionCount: clamp(cfg.get<number>('completionCount', 1), 1, 3),
+    prewarmOnActivation: cfg.get<boolean>('prewarmOnActivation', true),
   };
 }
 

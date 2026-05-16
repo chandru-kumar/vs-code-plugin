@@ -31,6 +31,7 @@ export class PilotCodeInlineProvider
   private readonly notifiedMissingModels = new Set<string>();
   private lastErrorKey = '';
   private lastErrorAt = 0;
+  private firstSuccessLogged = false;
 
   constructor(
     private readonly getSettings: () => PilotCodeSettings,
@@ -53,6 +54,9 @@ export class PilotCodeInlineProvider
     this.lastResult = undefined;
     this.lastErrorKey = '';
     this.lastErrorAt = 0;
+    // Reset the first-success marker so the user sees the celebration
+    // again after, e.g., switching to a different completion model.
+    this.firstSuccessLogged = false;
   }
 
   dispose(): void {
@@ -166,6 +170,19 @@ export class PilotCodeInlineProvider
           processed.length === 1 ? '' : 's'
         } in ${elapsed}ms (${strategy}, ${processed[0].length} chars)`
       );
+
+      // One-shot session marker — makes it unambiguous that PilotCode +
+      // the configured local model are alive, even at the default log
+      // level. Reset on settings change so model switches re-celebrate.
+      if (!this.firstSuccessLogged) {
+        this.firstSuccessLogged = true;
+        this.logger.info(
+          `🎉 PilotCode: first inline completion from '${s.completionModel}' ` +
+            `via ${s.endpoint} succeeded (${elapsed}ms, ${strategy}). ` +
+            `Inline completions are LIVE.`
+        );
+      }
+
       return processed.map((t) => toItem(t, position));
     } catch (err) {
       if (err instanceof DebounceCancelled) {

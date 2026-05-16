@@ -9,6 +9,7 @@ import { registerChatParticipant } from './chat/participant';
 import { StatusBar } from './ui/statusBar';
 import { PilotCodeInlineProvider } from './completions/inlineProvider';
 import { runDiagnose } from './commands/diagnose';
+import { prewarmCompletionModel } from './model/warmup';
 
 let logger: Logger | undefined;
 
@@ -98,6 +99,13 @@ export async function activate(
   );
 
   logger.info('PilotCode activated.');
+
+  // Kick off a background prewarm a moment after activation completes
+  // so the user's first inline completion is fast. Fire-and-forget;
+  // never blocks activation.
+  setTimeout(() => {
+    void prewarmCompletionModel(logger!);
+  }, 2_000);
 }
 
 export function deactivate(): void {

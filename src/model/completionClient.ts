@@ -7,7 +7,7 @@ import {
   buildInstructMessages,
   cleanInstructOutput,
   resolveStrategy,
-  FIM_STOP_TOKENS,
+  fimStopTokensFor,
   type CompletionStrategy,
 } from '../completions/promptStrategies';
 
@@ -93,7 +93,7 @@ export class CompletionClient {
       prompt: buildFimPrompt(ctx),
       max_tokens: s.completionMaxTokens,
       temperature,
-      stop: FIM_STOP_TOKENS,
+      stop: fimStopTokensFor(ctx.languageId),
       stream: false,
     };
     const res = await this.post(url, body, s.apiKey, signal);

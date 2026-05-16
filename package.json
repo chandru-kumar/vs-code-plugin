@@ -2,7 +2,7 @@
   "name": "pilotcode",
   "displayName": "PilotCode",
   "description": "Local-first, offline-capable Copilot clone for VS Code powered by Qwen / Ollama / any OpenAI-compatible endpoint. Inline completions, chat, agentic mode, and full MCP support.",
-  "version": "0.2.1",
+  "version": "0.3.0",
   "publisher": "chandru-kumar",
   "private": true,
   "license": "MIT",
@@ -51,7 +51,25 @@
         "name": "pilotcode",
         "fullName": "PilotCode",
         "description": "Local-first AI coding assistant powered by Qwen / Ollama.",
-        "isSticky": true
+        "isSticky": true,
+        "commands": [
+          {
+            "name": "explain",
+            "description": "Explain the selected / active code"
+          },
+          {
+            "name": "fix",
+            "description": "Find and fix bugs in the selected / active code"
+          },
+          {
+            "name": "test",
+            "description": "Generate unit tests for the selected / active code"
+          },
+          {
+            "name": "refactor",
+            "description": "Refactor the selected / active code for clarity"
+          }
+        ]
       }
     ],
     "commands": [
@@ -226,6 +244,12 @@
           "maximum": 3,
           "description": "Number of alternative suggestions to request (cycle with Alt+] / Alt+[). >1 issues parallel requests and is slower on local models.",
           "order": 18
+        },
+        "pilotcode.prewarmOnActivation": {
+          "type": "boolean",
+          "default": true,
+          "description": "Fire a tiny throw-away completion shortly after activation so Ollama loads the completion model into RAM. Eliminates the 10-30s cold-load latency on your first real ghost-text request.",
+          "order": 19
         }
       }
     }

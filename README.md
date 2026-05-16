@@ -5,7 +5,7 @@
 > endpoint. Inline completions, full chat sidebar, agentic tool-calling,
 > and native Model Context Protocol (MCP) support.
 
-**Status:** Phase 2 of 8 — inline ghost-text completions (debounced, context-aware, FIM + instruct, multi-suggestion).
+**Status:** Phase 3 of 8 — streaming chat (`@pilotcode`) with `/explain` `/fix` `/test` `/refactor` slash commands + workspace context, plus all of Phase 2.
 
 ---
 
@@ -29,8 +29,8 @@
 ## Phased roadmap
 
 - [x] **Phase 1** — Scaffolding, chat participant, settings, output channel, F5 debug
-- [x] **Phase 2** — Inline ghost-text completions (debounced, context-aware, multi-suggestion) ← **you are here**
-- [ ] **Phase 3** — Qwen / OpenAI-compatible streaming chat client
+- [x] **Phase 2** — Inline ghost-text completions (debounced, context-aware, multi-suggestion)
+- [x] **Phase 3** — Qwen / OpenAI-compatible streaming chat client + slash commands ← **you are here**
 - [ ] **Phase 4** — ReAct agentic loop + tool-calling + self-correction
 - [ ] **Phase 5** — MCP consumption (discover, connect, MCP Apps UI in chat)
 - [ ] **Phase 6** — Ship our own MCP server with dev tools (`analyze_monorepo_dependencies`, `run_security_scan`, `generate_pr_description`, `batch_file_edit_with_diff`, …)
@@ -248,6 +248,83 @@ errors — so I can verify timing/strategy on your Windows box.
 
 ---
 
+## 💬 Phase 3 — Streaming chat + slash commands
+
+`@pilotcode` is now a real chat agent — it streams Markdown into the Chat
+view as your local model generates tokens, with full conversation history,
+active-editor context, and four built-in slash commands.
+
+### How it works
+
+- **Streaming** over `POST /chat/completions` (OpenAI-compatible SSE).
+  Tokens appear in the Chat view as they arrive; no waiting for the full
+  response. First-token latency and total latency are logged at INFO:
+  ```
+  chat: streamed 1247 chars in 4820ms (first token 612ms, model=qwen2.5-coder:7b, /explain)
+  ```
+- **Context auto-injected** into every turn:
+  - The system prompt names your workspace.
+  - The active editor's filename + language is included; if you have a
+    selection, the selected code is attached in a fenced block.
+  - `#file:path/to/foo.ts` references are read and inlined (up to 5 files,
+    4 KB each).
+  - The last 10 `@pilotcode` turns of conversation history are replayed.
+- **Slash commands** (shown as suggestions when you type `/` in the chat
+  input):
+
+  | Command      | What it does                                     |
+  | ------------ | ------------------------------------------------ |
+  | `/explain`   | Walks through the selected/active code           |
+  | `/fix`       | Identifies the bug, returns corrected code       |
+  | `/test`      | Generates idiomatic unit tests                   |
+  | `/refactor`  | Improves clarity, preserves behaviour            |
+
+  Each command appends a task-specific addendum to the system prompt and
+  rewrites the user message using a template — your raw prompt is kept
+  as additional context.
+- **Follow-up suggestions** appear under every reply: *Explain further*,
+  *Write tests* (→ `/test`), *Refactor* (→ `/refactor`). One click sends.
+- **Typed error handling** — model-not-found, network errors, etc. render
+  a clear card in the Chat view with **Run Diagnose** / **Open Settings**
+  buttons, not a stack trace.
+
+### Manual test checklist for Phase 3 (Windows)
+
+Do these in the **Extension Development Host** window, with Ollama running
+and `pilotcode.chatModel` pointing at a model you actually have (e.g.
+`qwen2.5-coder:7b` if pulled, or whatever `ollama list` shows).
+
+| #  | Action                                                                                                          | Expected                                                                                          |
+| -- | --------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------- |
+| 1  | `git pull`, `npm install`, `npm run compile`, press **F5**                                                      | Clean build; Extension Development Host opens                                                     |
+| 2  | Within a few seconds of activation, watch Output: `PilotCode: Show Output Channel`                              | `prewarm: warming completion model '…' on http://…` followed by `prewarm: '…' ready in NNNms`     |
+| 3  | Open Chat (`Ctrl+Alt+I`), type just `@pilotcode` and press Enter                                                | Welcome card with the slash-command list, no model call made                                      |
+| 4  | Type `@pilotcode Write a Python function that reverses a string`                                                | Markdown streams in token by token; a fenced Python block appears                                 |
+| 5  | After it finishes, check Output                                                                                 | `chat: streamed N chars in NNNms (first token NNms, model=…)`                                     |
+| 6  | Select some code in an editor, then in Chat type `@pilotcode /explain`                                          | Reply starts with a walkthrough of the selected code (and references it)                          |
+| 7  | Type `@pilotcode /test` with a function selected                                                                | A unit-test file is generated in the appropriate framework for that language                      |
+| 8  | Type `@pilotcode /refactor` with code selected                                                                  | Refactored code returned, followed by 2–3 bullets describing the changes                          |
+| 9  | After step 6/7/8 finishes, you should see follow-up chips below the reply: 💡 Explain further / 🧪 Write tests / 🧹 Refactor | Click one — it sends a follow-up automatically                                          |
+| 10 | While a streaming reply is in progress, press the stop button (square icon in Chat input) or `Esc`              | Streaming stops immediately; no orphaned model calls                                              |
+| 11 | Set `pilotcode.chatModel` to `qwen3.6:latesttt` (typo) and ask a question                                       | Reply shows ❌ *"Model 'qwen3.6:latesttt' not found"* with Run Diagnose / Open Settings buttons   |
+| 12 | Fix the typo, type a normal completion-triggering line in a file                                                | Output should show the 🎉 **first-success marker** line on the very first ghost text of the session |
+| 13 | `ollama pull qwen2.5-coder:1.5b-base`, set `pilotcode.completionModel` to it, type some Python                  | Completions feel sharper; FIM stop tokens prevent run-on into the next `def`/`class`              |
+
+If 1–10 pass cleanly, **Phase 3 is verified**. Steps 11–13 confirm the
+Phase 2 polish landed too.
+
+### Phase 3 troubleshooting
+
+| Symptom | Fix |
+| --- | --- |
+| Chat reply is empty or "request failed" | Run **PilotCode: Diagnose**. Most likely your `chatModel` setting points at a model you haven't pulled. |
+| Reply streams very slowly | Use a smaller chat model (`qwen3.6:latest` instead of a 14B+). Or accept that local 7B+ models stream at ~30–50 tok/s on consumer hardware. |
+| `/explain` / `/fix` / etc. don't appear when typing `/` | The slash commands are declared in `package.json` — reload the Extension Development Host (`Ctrl+R` inside it) after pulling a new version. |
+| Cancel button doesn't stop generation | It should — we abort the HTTP request *and* cancel the body reader. If it doesn't, please file an issue with the Output log. |
+| Prewarm log never appears | Either `pilotcode.prewarmOnActivation` is `false`, or `enableInlineCompletions` is `false`, or your endpoint is unreachable (Diagnose will tell you). |
+
+---
+
 ## Project layout
 
 ```
@@ -259,16 +336,23 @@ vs-code-plugin/
 │   ├── extensions.json              # Recommended dev extensions
 │   └── settings.json                # Project formatting
 ├── src/
-│   ├── extension.ts                 # activate() / deactivate(), commands
-│   ├── chat/
-│   │   └── participant.ts           # @pilotcode chat participant
+│   ├── extension.ts                 # activate() / deactivate(), commands, prewarm
+│   ├── chat/                        # ── Phase 1 + Phase 3 ──
+│   │   ├── participant.ts            #   @pilotcode streaming chat participant
+│   │   ├── participantId.ts          #   shared id constant
+│   │   ├── contextBuilder.ts         #   history + active editor + #file refs
+│   │   └── slashCommands.ts          #   /explain /fix /test /refactor
 │   ├── completions/                 # ── Phase 2 ──
 │   │   ├── inlineProvider.ts         #   InlineCompletionItemProvider
 │   │   ├── contextGatherer.ts        #   prefix/suffix windowing
-│   │   ├── promptStrategies.ts       #   FIM + instruct prompts, post-proc
+│   │   ├── promptStrategies.ts       #   FIM + instruct prompts, lang stops
 │   │   └── debouncer.ts              #   debounce + cancellation
-│   ├── model/
-│   │   └── completionClient.ts       #   HTTP client (FIM + instruct)
+│   ├── model/                       # ── shared model layer ──
+│   │   ├── types.ts                  #   ChatMessage shape
+│   │   ├── completionClient.ts       #   non-streaming /completions + /chat
+│   │   ├── chatClient.ts             #   streaming /chat (SSE)         [Phase 3]
+│   │   └── warmup.ts                 #   background prewarm on activate
+│   ├── commands/diagnose.ts         # PilotCode: Diagnose
 │   ├── config/settings.ts           # typed settings reader + change listener
 │   ├── ui/statusBar.ts              # status-bar indicator (Phase 2)
 │   └── utils/logger.ts              # Level-aware LogOutputChannel wrapper
