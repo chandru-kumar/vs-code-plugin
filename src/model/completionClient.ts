@@ -17,6 +17,18 @@ export interface CompletionResult {
   elapsedMs: number;
 }
 
+/**
+ * Thrown when the endpoint reports the configured model does not exist.
+ * The provider catches this specifically to surface a one-time
+ * actionable warning to the user.
+ */
+export class ModelNotFoundError extends Error {
+  constructor(public readonly modelName: string) {
+    super(`Model '${modelName}' not found on the endpoint`);
+    this.name = 'ModelNotFoundError';
+  }
+}
+
 interface OpenAICompletionsResponse {
   choices?: Array<{ text?: string }>;
 }
@@ -129,6 +141,17 @@ export class CompletionClient {
     });
     if (!res.ok) {
       const errText = await res.text().catch(() => '');
+      if (res.status === 404) {
+        // Ollama / vLLM / LM Studio bodies all look roughly like:
+        //   {"error":{"message":"model 'xxx' not found", ...}}
+        // Extract the model name to throw a typed, user-actionable error.
+        const m = errText.match(
+          /model ['"]?([^'"\s]+)['"]?\s+not\s+found/i
+        );
+        if (m) {
+          throw new ModelNotFoundError(m[1]);
+        }
+      }
       throw new Error(
         `HTTP ${res.status} ${res.statusText}: ${errText.slice(0, 200)}`
       );

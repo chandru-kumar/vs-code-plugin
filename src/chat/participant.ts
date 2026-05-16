@@ -48,6 +48,11 @@ export function registerChatParticipant(
     );
 
     stream.button({
+      command: 'pilotcode.diagnose',
+      title: 'Run Diagnose',
+    });
+
+    stream.button({
       command: 'pilotcode.openSettings',
       title: 'Open PilotCode Settings',
     });

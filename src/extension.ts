@@ -8,6 +8,7 @@ import {
 import { registerChatParticipant } from './chat/participant';
 import { StatusBar } from './ui/statusBar';
 import { PilotCodeInlineProvider } from './completions/inlineProvider';
+import { runDiagnose } from './commands/diagnose';
 
 let logger: Logger | undefined;
 
@@ -51,7 +52,7 @@ export async function activate(
   context.subscriptions.push(
     onSettingsChanged((next) => {
       logger?.setLevel(next.logLevel);
-      inlineProvider.updateDebounce(next.completionDebounceMs);
+      inlineProvider.onSettingsChanged(next);
       statusBar.applySettings(next);
       logger?.info('Settings changed', {
         endpoint: next.endpoint,
@@ -75,6 +76,9 @@ export async function activate(
     }),
     vscode.commands.registerCommand('pilotcode.testConnection', async () => {
       await testConnectionCommand(logger!);
+    }),
+    vscode.commands.registerCommand('pilotcode.diagnose', async () => {
+      await runDiagnose(logger!);
     }),
     vscode.commands.registerCommand(
       'pilotcode.toggleInlineCompletions',

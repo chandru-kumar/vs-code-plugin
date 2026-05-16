@@ -3,6 +3,7 @@ import type { Logger } from '../utils/logger';
 import type { PilotCodeSettings } from '../config/settings';
 import {
   CompletionClient,
+  ModelNotFoundError,
   type CompletionResult,
 } from '../model/completionClient';
 import { gatherContext } from './contextGatherer';
@@ -17,7 +18,9 @@ import type { StatusBar } from '../ui/statusBar';
  *   2. debounces so the local model isn't hammered,
  *   3. bridges VS Code's CancellationToken to an AbortSignal,
  *   4. supports N parallel alternative suggestions,
- *   5. caches the most recent result to avoid duplicate round-trips.
+ *   5. caches the most recent result to avoid duplicate round-trips,
+ *   6. logs every outcome at INFO so the user can see the pipeline,
+ *   7. dedupes repeated errors and surfaces model-not-found just once.
  */
 export class PilotCodeInlineProvider
   implements vscode.InlineCompletionItemProvider
@@ -25,6 +28,9 @@ export class PilotCodeInlineProvider
   private readonly debouncer: AsyncDebouncer;
   private readonly client: CompletionClient;
   private lastResult: { key: string; text: string } | undefined;
+  private readonly notifiedMissingModels = new Set<string>();
+  private lastErrorKey = '';
+  private lastErrorAt = 0;
 
   constructor(
     private readonly getSettings: () => PilotCodeSettings,
@@ -35,8 +41,18 @@ export class PilotCodeInlineProvider
     this.debouncer = new AsyncDebouncer(getSettings().completionDebounceMs);
   }
 
-  updateDebounce(ms: number): void {
-    this.debouncer.setDelay(ms);
+  /**
+   * Called from the extension-wide settings-change listener. Updates the
+   * debounce window and clears all per-session caches/notifications so
+   * the user gets a fresh start after fixing config (e.g. correcting a
+   * model-name typo).
+   */
+  onSettingsChanged(next: PilotCodeSettings): void {
+    this.debouncer.setDelay(next.completionDebounceMs);
+    this.notifiedMissingModels.clear();
+    this.lastResult = undefined;
+    this.lastErrorKey = '';
+    this.lastErrorAt = 0;
   }
 
   dispose(): void {
@@ -76,13 +92,20 @@ export class PilotCodeInlineProvider
 
     const key = cacheKey(document.uri.toString(), ctx.prefix, ctx.suffix);
     if (this.lastResult?.key === key && this.lastResult.text.length > 0) {
+      this.logger.debug('inline: cache hit');
       return [toItem(this.lastResult.text, position)];
     }
+
+    this.logger.debug(
+      `inline: fired (file=${ctx.fileName}, model=${s.completionModel}, ` +
+        `prefixLen=${ctx.prefix.length}, suffixLen=${ctx.suffix.length})`
+    );
 
     const abort = new AbortController();
     const sub = token.onCancellationRequested(() => abort.abort());
     const count = Math.max(1, Math.min(3, s.completionCount));
     let didSetBusy = false;
+    const firedAt = Date.now();
 
     try {
       const results = await this.debouncer.run<CompletionResult[]>(async () => {
@@ -105,6 +128,17 @@ export class PilotCodeInlineProvider
         );
       }, abort.signal);
 
+      if (results.length === 0) {
+        // Either the request was cancelled (likely a fresh keystroke
+        // arrived) or `complete()` swallowed an error it already logged.
+        // Don't log INFO here — it would dominate the channel during
+        // active typing. Debug is enough.
+        this.logger.debug(
+          `inline: no result (${Date.now() - firedAt}ms — cancelled or errored)`
+        );
+        return undefined;
+      }
+
       const processed: string[] = [];
       const seen = new Set<string>();
       for (const r of results) {
@@ -116,27 +150,83 @@ export class PilotCodeInlineProvider
         processed.push(text);
       }
 
+      const elapsed = results[0]?.elapsedMs ?? 0;
+      const strategy = results[0]?.strategy ?? '?';
+
       if (processed.length === 0) {
+        this.logger.info(
+          `inline: model returned empty/whitespace (${elapsed}ms, ${strategy})`
+        );
         return undefined;
       }
 
       this.lastResult = { key, text: processed[0] };
-      this.logger.debug(
-        `inline: ${processed.length} suggestion(s) in ` +
-          `${results[0]?.elapsedMs ?? 0}ms (${results[0]?.strategy ?? '?'})`
+      this.logger.info(
+        `inline: ${processed.length} suggestion${
+          processed.length === 1 ? '' : 's'
+        } in ${elapsed}ms (${strategy}, ${processed[0].length} chars)`
       );
       return processed.map((t) => toItem(t, position));
     } catch (err) {
       if (err instanceof DebounceCancelled) {
         return undefined; // superseded by a newer keystroke — expected
       }
-      this.logger.error('inline completion failed', err);
+      if (err instanceof ModelNotFoundError) {
+        this.handleModelNotFound(err, s.endpoint);
+        return undefined;
+      }
+      this.logRateLimited(err);
       return undefined;
     } finally {
       sub.dispose();
       if (didSetBusy) {
         this.statusBar.setBusy(false);
       }
+    }
+  }
+
+  private handleModelNotFound(
+    err: ModelNotFoundError,
+    endpoint: string
+  ): void {
+    if (this.notifiedMissingModels.has(err.modelName)) {
+      // Already told the user about this exact missing model. Quiet.
+      this.logger.debug(
+        `inline: model '${err.modelName}' still missing — suppressing repeat notification`
+      );
+      return;
+    }
+    this.notifiedMissingModels.add(err.modelName);
+    this.logger.error(
+      `inline: completion model '${err.modelName}' not found on ${endpoint}`
+    );
+    void vscode.window
+      .showWarningMessage(
+        `PilotCode: completion model '${err.modelName}' not found on ${endpoint}.`,
+        'Run Diagnose',
+        'Open Settings'
+      )
+      .then((choice) => {
+        if (choice === 'Run Diagnose') {
+          void vscode.commands.executeCommand('pilotcode.diagnose');
+        } else if (choice === 'Open Settings') {
+          void vscode.commands.executeCommand('pilotcode.openSettings');
+        }
+      });
+  }
+
+  private logRateLimited(err: unknown): void {
+    const msg = err instanceof Error ? err.message : String(err);
+    const key = msg.slice(0, 120);
+    const now = Date.now();
+    // Same error within 30 s is logged at DEBUG to stop the channel
+    // being flooded by N identical 404s during rapid typing.
+    if (key !== this.lastErrorKey || now - this.lastErrorAt > 30_000) {
+      this.logger.error('inline completion failed', err);
+      this.lastErrorKey = key;
+      this.lastErrorAt = now;
+    } else {
+      this.logger.debug(`inline: repeat error suppressed (${msg.slice(0, 80)})`);
     }
   }
 }

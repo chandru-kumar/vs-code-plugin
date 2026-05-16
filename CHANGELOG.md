@@ -4,6 +4,32 @@ All notable changes to PilotCode will be documented here. This project follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.1] - 2026-05-16
+
+### Added
+- **`PilotCode: Diagnose`** command (also a button on every `@pilotcode`
+  reply). One click checks the endpoint, lists installed models,
+  validates the configured chat + completion models, suggests
+  closest-match alternatives for typos, and fires a real test
+  completion round-trip with timing. Results open in a markdown editor.
+- `ModelNotFoundError` — a typed error thrown when the endpoint reports
+  the model is missing. The inline provider catches it specifically and
+  shows a one-time *"Run Diagnose / Open Settings"* warning instead of
+  spamming the log with identical HTTP 404s.
+
+### Changed
+- **Inline-completion outcomes now log at `INFO`** (not `debug`) — at the
+  default log level you now see lines like
+  `inline: 1 suggestion in 1240ms (instruct, 18 chars)` and
+  `inline: model returned empty/whitespace (820ms, instruct)`.
+- Repeat errors with the same message are throttled to once per 30 s
+  (no more 9× identical 404s).
+- The inline provider now resets its caches and missing-model notifications
+  whenever the user edits PilotCode settings — so fixing a typo gives an
+  immediate fresh start.
+- Chat participant now offers a **Run Diagnose** button alongside the
+  existing *Open Settings* / *Test Endpoint Connection* buttons.
+
 ## [0.2.0] - 2026-05-14
 
 ### Added (Phase 2 — Inline completions)

@@ -2,7 +2,7 @@
   "name": "pilotcode",
   "displayName": "PilotCode",
   "description": "Local-first, offline-capable Copilot clone for VS Code powered by Qwen / Ollama / any OpenAI-compatible endpoint. Inline completions, chat, agentic mode, and full MCP support.",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "publisher": "chandru-kumar",
   "private": true,
   "license": "MIT",
@@ -68,6 +68,11 @@
       {
         "command": "pilotcode.testConnection",
         "title": "PilotCode: Test Model Endpoint Connection",
+        "category": "PilotCode"
+      },
+      {
+        "command": "pilotcode.diagnose",
+        "title": "PilotCode: Diagnose (endpoint + models + test completion)",
         "category": "PilotCode"
       },
       {

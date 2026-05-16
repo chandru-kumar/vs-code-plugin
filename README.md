@@ -229,13 +229,22 @@ errors — so I can verify timing/strategy on your Windows box.
 
 ### Phase 2 troubleshooting
 
+> 🩺 **First step for any issue: `Ctrl+Shift+P` → *PilotCode: Diagnose*.**
+> It checks the endpoint, validates your model names (and suggests fixes
+> for typos like `qwen3.6:latesttt` → `qwen3.6:latest`), and fires a real
+> test completion round-trip — all in one click. Results open in a
+> markdown editor you can read, copy, or share.
+
 | Symptom | Fix |
 | --- | --- |
-| No ghost text at all | Check the status bar isn't `$(circle-slash)`; check `pilotcode.completionModel` is a model you actually have (`ollama list`); check Output channel for errors. |
+| No ghost text at all | Run **PilotCode: Diagnose** — it catches all the common causes (wrong endpoint, missing/mis-typed model, model still cold-loading, competing extension, etc.). |
+| Lots of HTTP 404s in Output | Almost always a typo in `pilotcode.completionModel`. Diagnose will print *"did you mean X?"* with the closest available model. |
+| First completion after switching models takes 30+ s | Ollama is loading the model into RAM. Subsequent calls are fast. Pause typing so the first request isn't cancelled. |
 | Ghost text is very slow | Lower `completionMaxTokens` (e.g. 128), use a smaller model, or raise `completionDebounceMs`. Local model speed is the bottleneck. |
 | Completions repeat the code after the cursor | You're on a chat model in `instruct` mode — try a `*-coder` model with `auto`/`fim`. The suffix-overlap trimmer handles most cases but FIM is cleaner. |
 | Completions are chatty / include prose | Same as above — chat models sometimes ignore the "code only" instruction. A base/coder model in FIM mode fixes this. |
 | Completions wrapped in ```` ``` ```` fences | The instruct-output cleaner strips a single fence; if you still see them, the model added prose around it — switch to a coder model. |
+| GitHub Copilot is installed and showing its own ghost text | In the Extension Development Host: `Ctrl+,` → search `github.copilot.enable` → set to `false`. PilotCode then wins the inline-completion slot. |
 
 ---
 
