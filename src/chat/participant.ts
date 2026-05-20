@@ -6,14 +6,18 @@ import { ModelNotFoundError } from '../model/completionClient';
 import { buildChatMessages } from './contextBuilder';
 import { applySlashCommand, SLASH_COMMANDS } from './slashCommands';
 import { PARTICIPANT_ID } from './participantId';
+import { AgentLoop } from '../agent/loop';
+import type { ToolDescriptor } from '../agent/types';
 
 export { PARTICIPANT_ID };
 
 export function registerChatParticipant(
   context: vscode.ExtensionContext,
-  logger: Logger
+  logger: Logger,
+  tools: ToolDescriptor[]
 ): vscode.Disposable {
   const client = new ChatClient(readSettings, logger);
+  const agent = new AgentLoop(client, tools, logger);
 
   const handler: vscode.ChatRequestHandler = async (
     request,
@@ -45,10 +49,42 @@ export function registerChatParticipant(
     }
 
     const started = Date.now();
-    let totalChars = 0;
-    let firstTokenMs = -1;
 
     try {
+      // --- Agent mode (Phase 4) -----------------------------------------
+      if (settings.agentEnabled && tools.length > 0) {
+        const agentResult = await agent.run(
+          messages,
+          {
+            stream,
+            toolInvocationToken: request.toolInvocationToken,
+            maxIterations: settings.agentMaxIterations,
+          },
+          token
+        );
+        logger.info(
+          `chat (agent): ${agentResult.iterations} iter, ` +
+            `${agentResult.toolCalls} tool call(s), ${agentResult.totalChars} chars in ` +
+            `${agentResult.elapsedMs}ms (first activity ${agentResult.firstActivityMs}ms, ` +
+            `model=${settings.chatModel}${request.command ? `, /${request.command}` : ''})`
+        );
+        stream.button({ command: 'pilotcode.diagnose', title: 'Run Diagnose' });
+        return {
+          metadata: {
+            mode: 'agent',
+            iterations: agentResult.iterations,
+            toolCalls: agentResult.toolCalls,
+            elapsedMs: agentResult.elapsedMs,
+            firstActivityMs: agentResult.firstActivityMs,
+            chars: agentResult.totalChars,
+            command: request.command ?? null,
+          },
+        } satisfies vscode.ChatResult;
+      }
+
+      // --- Streaming mode (agent disabled) ------------------------------
+      let totalChars = 0;
+      let firstTokenMs = -1;
       for await (const chunk of client.stream(messages, token)) {
         if (token.isCancellationRequested) {
           break;
@@ -64,22 +100,16 @@ export function registerChatParticipant(
           break;
         }
       }
-
       const elapsed = Date.now() - started;
       logger.info(
         `chat: streamed ${totalChars} chars in ${elapsed}ms ` +
           `(first token ${firstTokenMs}ms, model=${settings.chatModel}` +
           `${request.command ? `, /${request.command}` : ''})`
       );
-
-      // Always offer the diagnose button — easy escape hatch.
-      stream.button({
-        command: 'pilotcode.diagnose',
-        title: 'Run Diagnose',
-      });
-
+      stream.button({ command: 'pilotcode.diagnose', title: 'Run Diagnose' });
       return {
         metadata: {
+          mode: 'stream',
           elapsedMs: elapsed,
           firstTokenMs,
           chars: totalChars,

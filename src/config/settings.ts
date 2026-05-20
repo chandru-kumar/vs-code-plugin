@@ -28,6 +28,9 @@ export interface PilotCodeSettings {
   completionCount: number;
   // --- Phase 3: chat + warmup ---
   prewarmOnActivation: boolean;
+  // --- Phase 4: agent ---
+  agentEnabled: boolean;
+  agentMaxIterations: number;
 }
 
 export function readSettings(): PilotCodeSettings {
@@ -84,6 +87,12 @@ export function readSettings(): PilotCodeSettings {
     completionMultiline: cfg.get<boolean>('completionMultiline', true),
     completionCount: clamp(cfg.get<number>('completionCount', 1), 1, 3),
     prewarmOnActivation: cfg.get<boolean>('prewarmOnActivation', true),
+    agentEnabled: cfg.get<boolean>('agent.enabled', true),
+    agentMaxIterations: clamp(
+      cfg.get<number>('agent.maxIterations', 5),
+      1,
+      20
+    ),
   };
 }
 

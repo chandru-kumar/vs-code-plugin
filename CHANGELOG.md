@@ -4,6 +4,55 @@ All notable changes to PilotCode will be documented here. This project follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.0] - 2026-05-17
+
+### Added (Phase 4 — Agentic mode)
+- **ReAct agent loop** (`src/agent/loop.ts`) — non-streaming chat with
+  tools, executes any returned `tool_calls`, appends `role: 'tool'`
+  messages, loops until the model produces a final answer with no tool
+  calls (or hits `agent.maxIterations`).
+- **Six local tools**, each implementing `vscode.LanguageModelTool` and
+  registered via `vscode.lm.registerTool`. Declared in `package.json`
+  `contributes.languageModelTools` so confirmation cards render natively
+  in the chat:
+  - `read_file(path)` — non-destructive
+  - `list_directory(path)` — non-destructive
+  - `grep_workspace(query, glob?, maxResults?)` — non-destructive, skips
+    `node_modules`, `.git`, `dist`, `out`, `build`, `.venv`, `__pycache__`
+    by default; auto-skips binary files
+  - `write_file(path, content, createOnly?)` — **destructive, requires
+    confirmation** with content preview
+  - `apply_diff(path, oldText, newText)` — **destructive, requires
+    confirmation** with diff preview; enforces unique-match safety
+  - `run_terminal_command(command, cwd?, timeoutSeconds?)` —
+    **destructive, requires confirmation**; returns stdout / stderr /
+    exit code (capped at 2 MB, 30 s timeout)
+- **Path-traversal guard** on all file-touching tools — workspace-relative
+  only, no `..` escapes, no absolute paths.
+- **Non-streaming `chat()` method** on `ChatClient` — supports `tools` +
+  `tool_choice`, returns the full assistant message including any
+  `tool_calls`.
+- **Streaming + agent paths** in the chat participant — agent is enabled
+  by default; turn off with `pilotcode.agent.enabled` to fall back to the
+  Phase 3 streaming path.
+- **In-chat tool UX** — each call renders as:
+  - `🔧 read_file("src/app.ts")` while pending
+  - `✅ read_file → 4231 chars` on success
+  - `❌ tool_name failed: <error>` on failure
+- **Iteration cap warning** — if the agent hits
+  `pilotcode.agent.maxIterations` (default 5) the chat shows a clear
+  "stopped after N iterations" note instead of silently stalling.
+- **Two new settings**:
+  - `pilotcode.agent.enabled` (boolean, default `true`)
+  - `pilotcode.agent.maxIterations` (number, default 5, range 1–20)
+
+### Changed
+- `ChatMessage` extended to support `tool_calls` (on assistant turns) and
+  `tool_call_id` / `name` (on tool turns).
+- `OpenAITool` + `ToolCall` types added to `src/model/types.ts`.
+- `registerChatParticipant` signature gained `tools: ToolDescriptor[]`
+  parameter.
+
 ## [0.3.0] - 2026-05-16
 
 ### Added (Phase 3 — Streaming chat)

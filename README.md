@@ -5,7 +5,7 @@
 > endpoint. Inline completions, full chat sidebar, agentic tool-calling,
 > and native Model Context Protocol (MCP) support.
 
-**Status:** Phase 3 of 8 — streaming chat (`@pilotcode`) with `/explain` `/fix` `/test` `/refactor` slash commands + workspace context, plus all of Phase 2.
+**Status:** Phase 4 of 8 — agentic mode with ReAct loop + 6 local tools (read/list/grep/write/diff/terminal), plus everything from Phases 1–3.
 
 ---
 
@@ -30,7 +30,8 @@
 
 - [x] **Phase 1** — Scaffolding, chat participant, settings, output channel, F5 debug
 - [x] **Phase 2** — Inline ghost-text completions (debounced, context-aware, multi-suggestion)
-- [x] **Phase 3** — Qwen / OpenAI-compatible streaming chat client + slash commands ← **you are here**
+- [x] **Phase 3** — Qwen / OpenAI-compatible streaming chat client + slash commands
+- [x] **Phase 4** — ReAct agentic loop + 6 local tools (in-process) ← **you are here**
 - [ ] **Phase 4** — ReAct agentic loop + tool-calling + self-correction
 - [ ] **Phase 5** — MCP consumption (discover, connect, MCP Apps UI in chat)
 - [ ] **Phase 6** — Ship our own MCP server with dev tools (`analyze_monorepo_dependencies`, `run_security_scan`, `generate_pr_description`, `batch_file_edit_with_diff`, …)
@@ -325,6 +326,91 @@ Phase 2 polish landed too.
 
 ---
 
+## 🤖 Phase 4 — Agentic mode + local tools
+
+`@pilotcode` is now an **agent**: it can *reason → call a tool → see the
+result → reason again → ...* until it produces a final answer. Six tools
+ship in-process; remote MCP tools come in Phase 5.
+
+### How it works (ReAct loop)
+
+```
+You: "Read src/app.ts and tell me what it does"
+  │
+  ▼
+┌──────────────────────────────────────────────────────────────┐
+│ PilotCode agent loop (max 5 iterations by default)           │
+│                                                              │
+│ 1. Send messages + 6 tool schemas to Qwen                    │
+│ 2. Qwen replies: tool_calls=[{ read_file, {"path":"..."} }]  │
+│ 3. Render "🔧 read_file(...)" in chat                        │
+│ 4. Invoke via vscode.lm.invokeTool (handles confirmation)    │
+│ 5. Append tool result as { role: "tool", ... }               │
+│ 6. Send again — Qwen now has the file content                │
+│ 7. Qwen replies with the final answer (no tool_calls)        │
+│ 8. Render the answer                                          │
+└──────────────────────────────────────────────────────────────┘
+```
+
+### The six built-in tools
+
+| Tool name            | Destructive? | What it does                                                                  |
+| -------------------- | ------------ | ----------------------------------------------------------------------------- |
+| `read_file`          | no           | Read a workspace file. Large files are truncated for the model.               |
+| `list_directory`     | no           | List immediate children of a directory (with F/D/L markers).                  |
+| `grep_workspace`     | no           | Literal-substring search across the workspace. Skips node_modules/dist/etc.   |
+| `write_file`         | **yes**      | Write a file (overwrite or create-only). **Confirmation card with preview.**  |
+| `apply_diff`         | **yes**      | Replace a unique substring in a file. **Confirmation card with diff preview.**|
+| `run_terminal_command` | **yes**    | Run a shell command. Returns stdout/stderr/exit code. **Confirmation card.**  |
+
+**Path safety:** all file tools reject absolute paths and `..` traversal —
+nothing outside the workspace folder can be touched.
+
+**Tool referencing:** because each tool has `canBeReferencedInPrompt: true`,
+you can also pin one with `#read_file` in chat to nudge the agent toward it.
+
+### Manual test checklist for Phase 4 (Windows)
+
+Do these in the **Extension Development Host** window with Ollama running
+and `pilotcode.chatModel` set to a model that supports tool calling
+(`qwen2.5-coder:7b` is the sweet spot — smaller chat models like
+`qwen3.5:latest` will work but call tools less reliably).
+
+> ⚠️ **Important:** open a folder as the workspace before testing (e.g.
+> `File → Open Folder…` → pick the cloned `vs-code-plugin` itself). Tools
+> like `read_file` / `grep_workspace` need a workspace.
+
+| #  | Action                                                                                                  | Expected                                                                                          |
+| -- | ------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------- |
+| 1  | `git fetch && git checkout feature/agent-loop && git pull && npm install && npm run compile`            | Clean build                                                                                       |
+| 2  | F5 → in host: Output channel                                                                            | New line: `Registered 6 tool(s): read_file, list_directory, grep_workspace, write_file, …`        |
+| 3  | Chat: `@pilotcode list the files in src/`                                                               | "🔧 `list_directory({"path":"src"})`" → "✅ … → N chars" → final answer with the file list        |
+| 4  | Chat: `@pilotcode read src/extension.ts and tell me what activate() does`                               | Sequence shows `read_file` call, then a summary of `activate()`                                   |
+| 5  | Chat: `@pilotcode find all uses of "TODO" in the project`                                               | `grep_workspace` call, then a summary of matches                                                  |
+| 6  | Chat: `@pilotcode create a file scratch/hello.py that prints "hello from pilotcode"`                    | **Confirmation card appears** showing the file path + content preview + Continue / Cancel buttons |
+| 7  | Click **Continue** on step 6                                                                            | "✅ `write_file` → N chars"; file actually appears on disk                                        |
+| 8  | Click **Cancel** on a follow-up write (e.g. `@pilotcode write a README to scratch/README.md`)           | "❌ `write_file` failed: …user declined…" — no file written                                       |
+| 9  | Chat: `@pilotcode in src/extension.ts replace the deactivate() body with: logger?.info("bye")`         | `read_file` first, then `apply_diff` confirmation card with old/new preview                       |
+| 10 | Chat: `@pilotcode run "npm list" in this project and summarize`                                          | `run_terminal_command` confirmation card → after approval, stdout summarized                      |
+| 11 | After a multi-tool turn, check Output channel                                                           | `chat (agent): N iter, M tool call(s), C chars in Tms (first activity Fms, model=…)`              |
+| 12 | Mid-stream: press the stop button in the Chat input                                                     | Loop halts immediately; no orphaned model / tool calls                                            |
+| 13 | Set `pilotcode.agent.enabled` to `false`, ask `@pilotcode hi`                                            | Falls back to plain streaming (no tools), Output logs `chat: streamed N chars …` (no "agent")     |
+| 14 | Re-enable agent, set `pilotcode.agent.maxIterations` to `1`, ask something that needs 2+ tool calls    | Chat shows the "⚠️ Stopped after 1 agent iteration(s)" notice                                     |
+
+If 1–12 pass, Phase 4 is verified.
+
+### Phase 4 troubleshooting
+
+| Symptom | Fix |
+| --- | --- |
+| Agent never calls a tool, just chats | Your chat model may not support OpenAI-style function calling. Try `qwen2.5-coder:7b` (best), `qwen2.5:7b`, or `llama3.1:8b-instruct`. Smaller models often "forget" to use tools. |
+| Confirmation card doesn't appear before destructive tool | VS Code only renders chat-inline confirmation when invoked via `vscode.lm.invokeTool` with `toolInvocationToken` (which we do). Ensure you're on VS Code 1.95+. |
+| Tool throws "No workspace open" | Open a folder before chatting (`File → Open Folder…`). |
+| Agent loops forever doing the same thing | Lower `pilotcode.agent.maxIterations` to 3; rephrase the prompt; or switch to a larger model. |
+| `run_terminal_command` returns nothing on Windows | Check the command works in a normal PowerShell. Some Windows commands need `cmd /c …`. |
+
+---
+
 ## Project layout
 
 ```
@@ -348,10 +434,22 @@ vs-code-plugin/
 │   │   ├── promptStrategies.ts       #   FIM + instruct prompts, lang stops
 │   │   └── debouncer.ts              #   debounce + cancellation
 │   ├── model/                       # ── shared model layer ──
-│   │   ├── types.ts                  #   ChatMessage shape
+│   │   ├── types.ts                  #   ChatMessage + ToolCall + OpenAITool
 │   │   ├── completionClient.ts       #   non-streaming /completions + /chat
-│   │   ├── chatClient.ts             #   streaming /chat (SSE)         [Phase 3]
+│   │   ├── chatClient.ts             #   streaming + non-streaming /chat
 │   │   └── warmup.ts                 #   background prewarm on activate
+│   ├── agent/                       # ── Phase 4 ──
+│   │   ├── types.ts                  #   ToolDescriptor + ToolDefinition
+│   │   └── loop.ts                   #   ReAct loop
+│   ├── tools/                       # ── Phase 4 ──
+│   │   ├── index.ts                  #   registerAllTools
+│   │   ├── util.ts                   #   path guard + result helpers
+│   │   ├── readFile.ts               #   read_file
+│   │   ├── listDirectory.ts          #   list_directory
+│   │   ├── grepWorkspace.ts          #   grep_workspace
+│   │   ├── writeFile.ts              #   write_file (destructive)
+│   │   ├── applyDiff.ts              #   apply_diff (destructive)
+│   │   └── runTerminal.ts            #   run_terminal_command (destructive)
 │   ├── commands/diagnose.ts         # PilotCode: Diagnose
 │   ├── config/settings.ts           # typed settings reader + change listener
 │   ├── ui/statusBar.ts              # status-bar indicator (Phase 2)

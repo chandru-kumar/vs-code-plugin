@@ -2,7 +2,7 @@
   "name": "pilotcode",
   "displayName": "PilotCode",
   "description": "Local-first, offline-capable Copilot clone for VS Code powered by Qwen / Ollama / any OpenAI-compatible endpoint. Inline completions, chat, agentic mode, and full MCP support.",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "publisher": "chandru-kumar",
   "private": true,
   "license": "MIT",
@@ -250,9 +250,144 @@
           "default": true,
           "description": "Fire a tiny throw-away completion shortly after activation so Ollama loads the completion model into RAM. Eliminates the 10-30s cold-load latency on your first real ghost-text request.",
           "order": 19
+        },
+        "pilotcode.agent.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Route chat requests through the agent loop (ReAct + tool calling). Turn off to use plain streaming chat with no tools.",
+          "order": 20
+        },
+        "pilotcode.agent.maxIterations": {
+          "type": "number",
+          "default": 5,
+          "minimum": 1,
+          "maximum": 20,
+          "description": "Safety cap on how many model→tool→model cycles a single chat turn may run. Higher values let the agent tackle deeper multi-step tasks at the cost of latency.",
+          "order": 21
         }
       }
-    }
+    },
+    "languageModelTools": [
+      {
+        "name": "pilotcode_read_file",
+        "displayName": "Read File",
+        "modelDescription": "Read the contents of a workspace-relative file and return the full UTF-8 text. Path must be relative to the workspace root.",
+        "userDescription": "Read a file from your workspace.",
+        "toolReferenceName": "read_file",
+        "canBeReferencedInPrompt": true,
+        "tags": ["pilotcode", "workspace", "read"],
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "path": {
+              "type": "string",
+              "description": "Workspace-relative path to the file."
+            }
+          },
+          "required": ["path"]
+        }
+      },
+      {
+        "name": "pilotcode_list_directory",
+        "displayName": "List Directory",
+        "modelDescription": "List the immediate children of a workspace directory. Use \".\" for the workspace root.",
+        "userDescription": "List the contents of a directory.",
+        "toolReferenceName": "list_directory",
+        "canBeReferencedInPrompt": true,
+        "tags": ["pilotcode", "workspace", "read"],
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "path": {
+              "type": "string",
+              "description": "Workspace-relative directory path; use \".\" for the workspace root."
+            }
+          },
+          "required": ["path"]
+        }
+      },
+      {
+        "name": "pilotcode_grep_workspace",
+        "displayName": "Grep Workspace",
+        "modelDescription": "Search the workspace for a literal substring across files. Returns path:line:text rows.",
+        "userDescription": "Search your workspace for a substring.",
+        "toolReferenceName": "grep_workspace",
+        "canBeReferencedInPrompt": true,
+        "tags": ["pilotcode", "workspace", "search"],
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "query": {
+              "type": "string",
+              "description": "Literal substring to search for (NOT a regex)."
+            },
+            "glob": {
+              "type": "string",
+              "description": "Optional include glob, e.g. \"src/**/*.ts\"."
+            },
+            "maxResults": {
+              "type": "number",
+              "description": "Max number of matches (1-200, default 50)."
+            }
+          },
+          "required": ["query"]
+        }
+      },
+      {
+        "name": "pilotcode_write_file",
+        "displayName": "Write File",
+        "modelDescription": "Write text content to a workspace-relative file. Overwrites by default; set createOnly:true to fail if the file already exists. Asks the user to confirm.",
+        "userDescription": "Write a file in your workspace (with confirmation).",
+        "toolReferenceName": "write_file",
+        "canBeReferencedInPrompt": true,
+        "tags": ["pilotcode", "workspace", "write", "destructive"],
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "path": { "type": "string", "description": "Workspace-relative path to write." },
+            "content": { "type": "string", "description": "Full file contents to write (UTF-8)." },
+            "createOnly": { "type": "boolean", "description": "If true, fail when the file already exists." }
+          },
+          "required": ["path", "content"]
+        }
+      },
+      {
+        "name": "pilotcode_apply_diff",
+        "displayName": "Apply Diff",
+        "modelDescription": "Replace a unique exact substring in a workspace file. oldText must match exactly once. Asks the user to confirm.",
+        "userDescription": "Apply a targeted patch to a file (with confirmation).",
+        "toolReferenceName": "apply_diff",
+        "canBeReferencedInPrompt": true,
+        "tags": ["pilotcode", "workspace", "write", "destructive"],
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "path": { "type": "string", "description": "Workspace-relative file path." },
+            "oldText": { "type": "string", "description": "Exact substring to replace (must match once)." },
+            "newText": { "type": "string", "description": "Replacement text." }
+          },
+          "required": ["path", "oldText", "newText"]
+        }
+      },
+      {
+        "name": "pilotcode_run_terminal_command",
+        "displayName": "Run Terminal Command",
+        "modelDescription": "Run a shell command in the workspace and return stdout, stderr, and exit code. Asks the user to confirm.",
+        "userDescription": "Run a shell command (with confirmation).",
+        "toolReferenceName": "run_terminal_command",
+        "canBeReferencedInPrompt": true,
+        "tags": ["pilotcode", "workspace", "execute", "destructive"],
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "command": { "type": "string", "description": "Shell command to execute." },
+            "cwd": { "type": "string", "description": "Workspace-relative working directory (default \".\")." },
+            "timeoutSeconds": { "type": "number", "description": "Timeout in seconds (1-120, default 30)." }
+          },
+          "required": ["command"]
+        }
+      }
+    ]
   },
   "scripts": {
     "vscode:prepublish": "npm run package",

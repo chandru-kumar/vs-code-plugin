@@ -10,6 +10,7 @@ import { StatusBar } from './ui/statusBar';
 import { PilotCodeInlineProvider } from './completions/inlineProvider';
 import { runDiagnose } from './commands/diagnose';
 import { prewarmCompletionModel } from './model/warmup';
+import { registerAllTools } from './tools';
 
 let logger: Logger | undefined;
 
@@ -28,8 +29,12 @@ export async function activate(
     completionModel: settings.completionModel,
   });
 
-  // --- Phase 1: chat participant -----------------------------------------
-  registerChatParticipant(context, logger);
+  // --- Phase 4: register tools (must happen before chat participant
+  //              so the agent loop has the descriptors) ------------------
+  const toolDescriptors = registerAllTools(context, logger);
+
+  // --- Phase 1 + 3 + 4: chat participant ---------------------------------
+  registerChatParticipant(context, logger, toolDescriptors);
 
   // --- Phase 2: inline completions ---------------------------------------
   const statusBar = new StatusBar();
