@@ -6,17 +6,17 @@ const watch = process.argv.includes('--watch');
 
 /** @type {import('esbuild').Plugin} */
 const reportPlugin = {
-  name: 'pilotcode-report',
+  name: 'bosch-copilot-report',
   setup(build) {
     build.onStart(() => {
-      console.log('[pilotcode] build started');
+      console.log('[bosch-copilot] build started');
     });
     build.onEnd((result) => {
       result.errors.forEach((e) =>
-        console.error(`[pilotcode] error: ${e.text}`)
+        console.error(`[bosch-copilot] error: ${e.text}`)
       );
       console.log(
-        `[pilotcode] build finished${
+        `[bosch-copilot] build finished${
           result.errors.length ? ' with errors' : ''
         }`
       );
@@ -42,7 +42,7 @@ async function main() {
 
   if (watch) {
     await ctx.watch();
-    console.log('[pilotcode] watching for changes...');
+    console.log('[bosch-copilot] watching for changes...');
   } else {
     await ctx.rebuild();
     await ctx.dispose();

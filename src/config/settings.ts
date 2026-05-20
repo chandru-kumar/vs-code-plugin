@@ -1,11 +1,11 @@
 import * as vscode from 'vscode';
 import type { LogLevel } from '../utils/logger';
 
-export const CONFIG_SECTION = 'pilotcode';
+export const CONFIG_SECTION = 'bosch-copilot';
 
 export type CompletionStrategySetting = 'auto' | 'fim' | 'instruct';
 
-export interface PilotCodeSettings {
+export interface BoschCopilotSettings {
   // --- Core / shared ---
   endpoint: string;
   apiKey: string;
@@ -33,7 +33,7 @@ export interface PilotCodeSettings {
   agentMaxIterations: number;
 }
 
-export function readSettings(): PilotCodeSettings {
+export function readSettings(): BoschCopilotSettings {
   const cfg = vscode.workspace.getConfiguration(CONFIG_SECTION);
   return {
     endpoint: normalizeEndpoint(
@@ -97,7 +97,7 @@ export function readSettings(): PilotCodeSettings {
 }
 
 export function onSettingsChanged(
-  listener: (settings: PilotCodeSettings) => void
+  listener: (settings: BoschCopilotSettings) => void
 ): vscode.Disposable {
   return vscode.workspace.onDidChangeConfiguration((e) => {
     if (e.affectsConfiguration(CONFIG_SECTION)) {

@@ -73,7 +73,7 @@ class WriteFileTool implements vscode.LanguageModelTool<WriteFileInput> {
 export const writeFileTool: ToolDefinition<WriteFileInput> = {
   descriptor: {
     llmName: 'write_file',
-    vsCodeName: 'pilotcode_write_file',
+    vsCodeName: 'bosch_copilot_write_file',
     description:
       'Write text content to a workspace-relative file. Overwrites by default; ' +
       'set `createOnly: true` to fail if the file already exists. ' +

@@ -54,7 +54,7 @@ class ListDirectoryTool
 export const listDirectoryTool: ToolDefinition<ListDirectoryInput> = {
   descriptor: {
     llmName: 'list_directory',
-    vsCodeName: 'pilotcode_list_directory',
+    vsCodeName: 'bosch_copilot_list_directory',
     description:
       'List the immediate children of a workspace directory. ' +
       'Returns one line per entry with a type marker (F=file, D=directory). ' +

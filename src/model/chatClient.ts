@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 import type { Logger } from '../utils/logger';
-import type { PilotCodeSettings } from '../config/settings';
+import type { BoschCopilotSettings } from '../config/settings';
 import type { ChatMessage, OpenAITool, ToolCall } from './types';
 import { ModelNotFoundError } from './completionClient';
 
@@ -46,7 +46,7 @@ export interface ChatNonStreamResult {
  */
 export class ChatClient {
   constructor(
-    private readonly getSettings: () => PilotCodeSettings,
+    private readonly getSettings: () => BoschCopilotSettings,
     private readonly logger: Logger
   ) {}
 

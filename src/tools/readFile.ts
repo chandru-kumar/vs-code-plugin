@@ -31,7 +31,7 @@ class ReadFileTool implements vscode.LanguageModelTool<ReadFileInput> {
 export const readFileTool: ToolDefinition<ReadFileInput> = {
   descriptor: {
     llmName: 'read_file',
-    vsCodeName: 'pilotcode_read_file',
+    vsCodeName: 'bosch_copilot_read_file',
     description:
       'Read the contents of a workspace-relative file and return the full UTF-8 text. ' +
       'Path must be relative to the workspace root (e.g. "src/app.ts"). ' +

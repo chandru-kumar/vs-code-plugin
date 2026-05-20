@@ -28,7 +28,7 @@ export async function runDiagnose(logger: Logger): Promise<void> {
     write(`- ℹ️ ${msg}`);
   };
 
-  write('# PilotCode Diagnose');
+  write('# Bosch-CoPilot Diagnose');
   write('');
   write(`_Generated: ${new Date().toISOString()}_`);
   write('');
@@ -79,8 +79,8 @@ export async function runDiagnose(logger: Logger): Promise<void> {
     write('');
     write('**Cannot continue without a reachable endpoint.** Common fixes:');
     write('- Make sure Ollama is running (`ollama serve`, or launch the Ollama app)');
-    write('- Verify `pilotcode.endpoint` (default `http://localhost:11434/v1`)');
-    write('- If using a remote host, set `pilotcode.apiKey` if required');
+    write('- Verify `bosch-copilot.endpoint` (default `http://localhost:11434/v1`)');
+    write('- If using a remote host, set `bosch-copilot.apiKey` if required');
     logger.warn(`Diagnose: endpoint check failed — ${msg}`);
     await openMarkdownPanel(lines.join('\n'));
     return;
@@ -124,7 +124,7 @@ export async function runDiagnose(logger: Logger): Promise<void> {
       prefix: 'function add(a, b) {\n  return ',
       suffix: '\n}\n',
       languageId: 'javascript',
-      fileName: 'pilotcode-diagnose.js',
+      fileName: 'bosch-copilot-diagnose.js',
     };
     const cts = new vscode.CancellationTokenSource();
     const timeoutMs = 60_000;
@@ -149,7 +149,7 @@ export async function runDiagnose(logger: Logger): Promise<void> {
       } else {
         bad(
           `Test completion returned **no result** (cancelled or errored). ` +
-            `Check the PilotCode Output channel for details.`
+            `Check the Bosch-CoPilot Output channel for details.`
         );
         if (cts.token.isCancellationRequested) {
           write(
@@ -171,7 +171,7 @@ export async function runDiagnose(logger: Logger): Promise<void> {
   write('');
   write('## If you still see no ghost text');
   write('1. **VS Code setting** `editor.inlineSuggest.enabled` must be `true` (default).');
-  write('2. **Status bar** at bottom-right should show `$(rocket) PilotCode`. If it shows `$(circle-slash)`, click it to enable.');
+  write('2. **Status bar** at bottom-right should show `$(rocket) Bosch-CoPilot`. If it shows `$(circle-slash)`, click it to enable.');
   write('3. **Competing extensions** — if GitHub Copilot is installed and active in the Extension Development Host, it may take precedence. Disable it for the host or set `github.copilot.enable` to `false`.');
   write('4. **Model load time** — first request to a model can take 10–30 s while Ollama loads it into RAM. Pause typing for ~30 s after switching models so the first request can complete instead of being cancelled.');
   write('5. **Document scheme** — completions only fire in `file://` or `untitled:` documents (not in output panels, search results, settings editor, etc.).');

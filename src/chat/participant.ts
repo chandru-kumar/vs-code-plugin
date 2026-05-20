@@ -68,7 +68,7 @@ export function registerChatParticipant(
             `${agentResult.elapsedMs}ms (first activity ${agentResult.firstActivityMs}ms, ` +
             `model=${settings.chatModel}${request.command ? `, /${request.command}` : ''})`
         );
-        stream.button({ command: 'pilotcode.diagnose', title: 'Run Diagnose' });
+        stream.button({ command: 'bosch-copilot.diagnose', title: 'Run Diagnose' });
         return {
           metadata: {
             mode: 'agent',
@@ -106,7 +106,7 @@ export function registerChatParticipant(
           `(first token ${firstTokenMs}ms, model=${settings.chatModel}` +
           `${request.command ? `, /${request.command}` : ''})`
       );
-      stream.button({ command: 'pilotcode.diagnose', title: 'Run Diagnose' });
+      stream.button({ command: 'bosch-copilot.diagnose', title: 'Run Diagnose' });
       return {
         metadata: {
           mode: 'stream',
@@ -153,7 +153,7 @@ export function registerChatParticipant(
   };
 
   context.subscriptions.push(participant);
-  logger.info(`Registered chat participant @pilotcode (id=${PARTICIPANT_ID})`);
+  logger.info(`Registered chat participant @bosch-copilot (id=${PARTICIPANT_ID})`);
   return participant;
 }
 
@@ -162,7 +162,7 @@ export function registerChatParticipant(
 function renderHelp(stream: vscode.ChatResponseStream): void {
   const s = readSettings();
   stream.markdown(
-    `### Welcome to **@pilotcode** 👋\n\n` +
+    `### Welcome to **@bosch-copilot** 👋\n\n` +
       `I'm a local-first AI coding assistant powered by your own model ` +
       `(currently \`${s.chatModel}\` at \`${s.endpoint}\`). ` +
       `Ask me anything about your code.\n\n` +
@@ -176,11 +176,11 @@ function renderHelp(stream: vscode.ChatResponseStream): void {
       `- Inline ghost-text completions are live as you type.\n`
   );
   stream.button({
-    command: 'pilotcode.diagnose',
+    command: 'bosch-copilot.diagnose',
     title: 'Run Diagnose',
   });
   stream.button({
-    command: 'pilotcode.openSettings',
+    command: 'bosch-copilot.openSettings',
     title: 'Open Settings',
   });
 }
@@ -195,12 +195,12 @@ function handleChatError(
     logger.error(`chat: model not found: ${err.modelName}`);
     stream.markdown(
       `\n\n❌ **Model \`${err.modelName}\` not found** on \`${endpoint}\`.\n\n` +
-        `Run **PilotCode: Diagnose** to see which models are available, ` +
-        `or fix \`pilotcode.chatModel\` in settings.\n`
+        `Run **Bosch-CoPilot: Diagnose** to see which models are available, ` +
+        `or fix \`bosch-copilot.chatModel\` in settings.\n`
     );
-    stream.button({ command: 'pilotcode.diagnose', title: 'Run Diagnose' });
+    stream.button({ command: 'bosch-copilot.diagnose', title: 'Run Diagnose' });
     stream.button({
-      command: 'pilotcode.openSettings',
+      command: 'bosch-copilot.openSettings',
       title: 'Open Settings',
     });
     return { metadata: { error: 'model_not_found' } };
@@ -213,9 +213,9 @@ function handleChatError(
       `Check that your endpoint (\`${endpoint}\`) is reachable and that the ` +
       `configured chat model exists.\n`
   );
-  stream.button({ command: 'pilotcode.diagnose', title: 'Run Diagnose' });
+  stream.button({ command: 'bosch-copilot.diagnose', title: 'Run Diagnose' });
   stream.button({
-    command: 'pilotcode.showOutput',
+    command: 'bosch-copilot.showOutput',
     title: 'Show Output Channel',
   });
   return { metadata: { error: 'request_failed', message: msg } };

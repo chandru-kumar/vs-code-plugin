@@ -9,7 +9,7 @@ import { writeFileTool } from './writeFile';
 import { applyDiffTool } from './applyDiff';
 import { runTerminalTool } from './runTerminal';
 
-/** Canonical list of all PilotCode-provided tools, in display order. */
+/** Canonical list of all Bosch-CoPilot-provided tools, in display order. */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const ALL_TOOLS: Array<ToolDefinition<any>> = [
   readFileTool,
@@ -21,7 +21,7 @@ const ALL_TOOLS: Array<ToolDefinition<any>> = [
 ];
 
 /**
- * Registers every PilotCode tool with VS Code's Language Model Tools API
+ * Registers every Bosch-CoPilot tool with VS Code's Language Model Tools API
  * and returns the static descriptors (used to advertise the tools to the
  * LLM in agent-loop requests). Disposes cleanly with the extension.
  */

@@ -1,8 +1,27 @@
 # Changelog
 
-All notable changes to PilotCode will be documented here. This project follows
+All notable changes to Bosch-CoPilot will be documented here. This project follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+## [0.4.1] - 2026-05-20
+
+### Changed
+- **Rebranded `PilotCode` → `Bosch-CoPilot`.** Renamed throughout with no
+  behaviour change:
+  - Display name → `Bosch-CoPilot`; output channel → `Bosch-CoPilot`.
+  - Chat participant `@pilotcode` → `@bosch-copilot` (id `bosch-copilot.chat`).
+  - All settings `pilotcode.*` → `bosch-copilot.*`.
+  - All commands `pilotcode.*` → `bosch-copilot.*`.
+  - Package `name` → `bosch-copilot`; extension id →
+    `chandru-kumar.bosch-copilot`.
+  - Language-model tool ids `pilotcode_*` → `bosch_copilot_*`
+    (the `#read_file` etc. reference names are unchanged).
+  - Internal identifiers `PilotCodeSettings` → `BoschCopilotSettings`,
+    `PilotCodeInlineProvider` → `BoschCopilotInlineProvider`.
+- ⚠️ **Breaking for existing installs:** the extension id changed, so any
+  settings previously saved under `pilotcode.*` are orphaned — re-enter
+  them under `bosch-copilot.*` (endpoint, models, etc.).
 
 ## [0.4.0] - 2026-05-17
 
@@ -33,18 +52,18 @@ All notable changes to PilotCode will be documented here. This project follows
   `tool_choice`, returns the full assistant message including any
   `tool_calls`.
 - **Streaming + agent paths** in the chat participant — agent is enabled
-  by default; turn off with `pilotcode.agent.enabled` to fall back to the
+  by default; turn off with `bosch-copilot.agent.enabled` to fall back to the
   Phase 3 streaming path.
 - **In-chat tool UX** — each call renders as:
   - `🔧 read_file("src/app.ts")` while pending
   - `✅ read_file → 4231 chars` on success
   - `❌ tool_name failed: <error>` on failure
 - **Iteration cap warning** — if the agent hits
-  `pilotcode.agent.maxIterations` (default 5) the chat shows a clear
+  `bosch-copilot.agent.maxIterations` (default 5) the chat shows a clear
   "stopped after N iterations" note instead of silently stalling.
 - **Two new settings**:
-  - `pilotcode.agent.enabled` (boolean, default `true`)
-  - `pilotcode.agent.maxIterations` (number, default 5, range 1–20)
+  - `bosch-copilot.agent.enabled` (boolean, default `true`)
+  - `bosch-copilot.agent.maxIterations` (number, default 5, range 1–20)
 
 ### Changed
 - `ChatMessage` extended to support `tool_calls` (on assistant turns) and
@@ -60,7 +79,7 @@ All notable changes to PilotCode will be documented here. This project follows
   parsing (`data:` lines, `[DONE]` terminator, `finish_reason` handling,
   partial-event buffering across reads). End-to-end cancellation aborts
   the HTTP request *and* cancels the body reader.
-- **`@pilotcode` is now a real chat agent** — streams Markdown tokens
+- **`@bosch-copilot` is now a real chat agent** — streams Markdown tokens
   into the Chat view as the model generates them, with first-token and
   total latency logged at INFO.
 - **Slash commands** (declared in `package.json` and surfaced in the
@@ -74,7 +93,7 @@ All notable changes to PilotCode will be documented here. This project follows
   re-serialised into the message array (Markdown response parts only).
 - **Follow-up suggestions** under every reply: *Explain further*,
   *Write tests* (→ `/test`), *Refactor* (→ `/refactor`).
-- **Helpful welcome card** when `@pilotcode` is invoked with no prompt
+- **Helpful welcome card** when `@bosch-copilot` is invoked with no prompt
   and no slash command (lists the slash commands + tips, doesn't waste
   a model call).
 - **Typed error handling in chat** — `ModelNotFoundError` renders a
@@ -85,13 +104,13 @@ All notable changes to PilotCode will be documented here. This project follows
 - **Background prewarm on activation** — fires one tiny throw-away
   completion 2 s after activate() so Ollama loads the completion model
   into RAM. Eliminates the 10-30 s cold-load on the user's first real
-  ghost-text request. Disable with `pilotcode.prewarmOnActivation`.
+  ghost-text request. Disable with `bosch-copilot.prewarmOnActivation`.
 - **Language-aware FIM stop tokens** for Python, JS/TS, JSX/TSX, Java,
   C#, Go, Rust, C/C++, Ruby, PHP, Swift, Kotlin. Keeps completions from
   bleeding into the next class / function / module.
 - **🎉 First-success marker** at INFO level on the very first
   successful completion of a session:
-  `🎉 PilotCode: first inline completion from 'qwen2.5-coder:1.5b-base' via http://localhost:11434/v1 succeeded (1240ms, fim). Inline completions are LIVE.`
+  `🎉 Bosch-CoPilot: first inline completion from 'qwen2.5-coder:1.5b-base' via http://localhost:11434/v1 succeeded (1240ms, fim). Inline completions are LIVE.`
   Resets on settings change so model switches re-celebrate.
 
 ### Changed
@@ -104,7 +123,7 @@ All notable changes to PilotCode will be documented here. This project follows
 ## [0.2.1] - 2026-05-16
 
 ### Added
-- **`PilotCode: Diagnose`** command (also a button on every `@pilotcode`
+- **`Bosch-CoPilot: Diagnose`** command (also a button on every `@bosch-copilot`
   reply). One click checks the endpoint, lists installed models,
   validates the configured chat + completion models, suggests
   closest-match alternatives for typos, and fires a real test
@@ -122,7 +141,7 @@ All notable changes to PilotCode will be documented here. This project follows
 - Repeat errors with the same message are throttled to once per 30 s
   (no more 9× identical 404s).
 - The inline provider now resets its caches and missing-model notifications
-  whenever the user edits PilotCode settings — so fixing a typo gives an
+  whenever the user edits Bosch-CoPilot settings — so fixing a typo gives an
   immediate fresh start.
 - Chat participant now offers a **Run Diagnose** button alongside the
   existing *Open Settings* / *Test Endpoint Connection* buttons.
@@ -141,22 +160,22 @@ All notable changes to PilotCode will be documented here. This project follows
   `CancellationToken` to `AbortSignal` (no orphaned model requests).
 - Context gatherer with line-count + hard char-budget windowing around the
   cursor (prefix gets the larger share).
-- Multi-suggestion support (`pilotcode.completionCount`, parallel requests
+- Multi-suggestion support (`bosch-copilot.completionCount`, parallel requests
   with a temperature spread, deduped).
 - Single-entry result cache to skip duplicate round-trips.
 - Reference-counted status-bar item (`$(rocket)` / `$(loading~spin)` /
   `$(circle-slash)`) — click to toggle.
-- `PilotCode: Toggle Inline Completions` command.
-- 9 new `pilotcode.completion*` settings (strategy, debounce, max tokens,
+- `Bosch-CoPilot: Toggle Inline Completions` command.
+- 9 new `bosch-copilot.completion*` settings (strategy, debounce, max tokens,
   temperature, prefix/suffix lines, char budget, multiline, count).
 
 ## [0.1.0] - 2026-05-13
 
 ### Added (Phase 1 — Scaffolding)
 - Initial extension manifest (`package.json`) with full `contributes.configuration`.
-- `@pilotcode` chat participant (stub responder, will gain streaming + tools in later phases).
+- `@bosch-copilot` chat participant (stub responder, will gain streaming + tools in later phases).
 - Output channel + level-aware logger.
-- Endpoint connection test command (`PilotCode: Test Model Endpoint Connection`).
+- Endpoint connection test command (`Bosch-CoPilot: Test Model Endpoint Connection`).
 - `Open Settings` and `Show Output Channel` commands.
 - esbuild bundling pipeline, strict TypeScript config, ESLint + Prettier.
 - GitHub Actions CI matrix (Windows / Ubuntu / macOS).

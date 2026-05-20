@@ -122,7 +122,7 @@ export class AgentLoop {
     // Hit the iteration cap.
     options.stream.markdown(
       `\n\n> ⚠️ **Stopped after ${options.maxIterations} agent iteration(s).** ` +
-        `Raise \`pilotcode.agent.maxIterations\` if you need longer chains, or ` +
+        `Raise \`bosch-copilot.agent.maxIterations\` if you need longer chains, or ` +
         `simplify the request.\n`
     );
     this.logger.warn(

@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 import type { Logger } from '../utils/logger';
-import type { PilotCodeSettings } from '../config/settings';
+import type { BoschCopilotSettings } from '../config/settings';
 import {
   CompletionClient,
   ModelNotFoundError,
@@ -22,7 +22,7 @@ import type { StatusBar } from '../ui/statusBar';
  *   6. logs every outcome at INFO so the user can see the pipeline,
  *   7. dedupes repeated errors and surfaces model-not-found just once.
  */
-export class PilotCodeInlineProvider
+export class BoschCopilotInlineProvider
   implements vscode.InlineCompletionItemProvider
 {
   private readonly debouncer: AsyncDebouncer;
@@ -34,7 +34,7 @@ export class PilotCodeInlineProvider
   private firstSuccessLogged = false;
 
   constructor(
-    private readonly getSettings: () => PilotCodeSettings,
+    private readonly getSettings: () => BoschCopilotSettings,
     private readonly logger: Logger,
     private readonly statusBar: StatusBar
   ) {
@@ -48,7 +48,7 @@ export class PilotCodeInlineProvider
    * the user gets a fresh start after fixing config (e.g. correcting a
    * model-name typo).
    */
-  onSettingsChanged(next: PilotCodeSettings): void {
+  onSettingsChanged(next: BoschCopilotSettings): void {
     this.debouncer.setDelay(next.completionDebounceMs);
     this.notifiedMissingModels.clear();
     this.lastResult = undefined;
@@ -171,13 +171,13 @@ export class PilotCodeInlineProvider
         } in ${elapsed}ms (${strategy}, ${processed[0].length} chars)`
       );
 
-      // One-shot session marker — makes it unambiguous that PilotCode +
+      // One-shot session marker — makes it unambiguous that Bosch-CoPilot +
       // the configured local model are alive, even at the default log
       // level. Reset on settings change so model switches re-celebrate.
       if (!this.firstSuccessLogged) {
         this.firstSuccessLogged = true;
         this.logger.info(
-          `🎉 PilotCode: first inline completion from '${s.completionModel}' ` +
+          `🎉 Bosch-CoPilot: first inline completion from '${s.completionModel}' ` +
             `via ${s.endpoint} succeeded (${elapsed}ms, ${strategy}). ` +
             `Inline completions are LIVE.`
         );
@@ -219,15 +219,15 @@ export class PilotCodeInlineProvider
     );
     void vscode.window
       .showWarningMessage(
-        `PilotCode: completion model '${err.modelName}' not found on ${endpoint}.`,
+        `Bosch-CoPilot: completion model '${err.modelName}' not found on ${endpoint}.`,
         'Run Diagnose',
         'Open Settings'
       )
       .then((choice) => {
         if (choice === 'Run Diagnose') {
-          void vscode.commands.executeCommand('pilotcode.diagnose');
+          void vscode.commands.executeCommand('bosch-copilot.diagnose');
         } else if (choice === 'Open Settings') {
-          void vscode.commands.executeCommand('pilotcode.openSettings');
+          void vscode.commands.executeCommand('bosch-copilot.openSettings');
         }
       });
   }

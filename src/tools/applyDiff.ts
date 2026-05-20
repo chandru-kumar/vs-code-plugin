@@ -93,7 +93,7 @@ function preview(text: string, max = 600): string {
 export const applyDiffTool: ToolDefinition<ApplyDiffInput> = {
   descriptor: {
     llmName: 'apply_diff',
-    vsCodeName: 'pilotcode_apply_diff',
+    vsCodeName: 'bosch_copilot_apply_diff',
     description:
       'Replace a unique exact substring in a workspace file. The `oldText` ' +
       'MUST appear exactly once in the file (provide enough surrounding ' +

@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import type { PilotCodeSettings } from '../config/settings';
+import type { BoschCopilotSettings } from '../config/settings';
 
 /**
  * Status-bar indicator for inline completions. Click toggles them on/off.
@@ -13,17 +13,17 @@ export class StatusBar implements vscode.Disposable {
 
   constructor() {
     this.item = vscode.window.createStatusBarItem(
-      'pilotcode.status',
+      'bosch-copilot.status',
       vscode.StatusBarAlignment.Right,
       100
     );
-    this.item.name = 'PilotCode';
-    this.item.command = 'pilotcode.toggleInlineCompletions';
+    this.item.name = 'Bosch-CoPilot';
+    this.item.command = 'bosch-copilot.toggleInlineCompletions';
     this.render();
     this.item.show();
   }
 
-  applySettings(s: PilotCodeSettings): void {
+  applySettings(s: BoschCopilotSettings): void {
     this.enabled = s.enableInlineCompletions;
     this.render();
   }
@@ -39,18 +39,18 @@ export class StatusBar implements vscode.Disposable {
 
   private render(): void {
     if (!this.enabled) {
-      this.item.text = '$(circle-slash) PilotCode';
+      this.item.text = '$(circle-slash) Bosch-CoPilot';
       this.item.tooltip =
-        'PilotCode inline completions are OFF — click to enable';
+        'Bosch-CoPilot inline completions are OFF — click to enable';
       return;
     }
     if (this.busyCount > 0) {
-      this.item.text = '$(loading~spin) PilotCode';
-      this.item.tooltip = 'PilotCode is generating a completion…';
+      this.item.text = '$(loading~spin) Bosch-CoPilot';
+      this.item.tooltip = 'Bosch-CoPilot is generating a completion…';
     } else {
-      this.item.text = '$(rocket) PilotCode';
+      this.item.text = '$(rocket) Bosch-CoPilot';
       this.item.tooltip =
-        'PilotCode inline completions are ON — click to disable';
+        'Bosch-CoPilot inline completions are ON — click to disable';
     }
   }
 }

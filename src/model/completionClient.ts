@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 import type { Logger } from '../utils/logger';
-import type { PilotCodeSettings } from '../config/settings';
+import type { BoschCopilotSettings } from '../config/settings';
 import type { CompletionContext } from '../completions/contextGatherer';
 import {
   buildFimPrompt,
@@ -48,7 +48,7 @@ interface OpenAIChatResponse {
  */
 export class CompletionClient {
   constructor(
-    private readonly getSettings: () => PilotCodeSettings,
+    private readonly getSettings: () => BoschCopilotSettings,
     private readonly logger: Logger
   ) {}
 
@@ -82,7 +82,7 @@ export class CompletionClient {
   }
 
   private async callFim(
-    s: PilotCodeSettings,
+    s: BoschCopilotSettings,
     ctx: CompletionContext,
     temperature: number,
     signal: AbortSignal
@@ -102,7 +102,7 @@ export class CompletionClient {
   }
 
   private async callInstruct(
-    s: PilotCodeSettings,
+    s: BoschCopilotSettings,
     ctx: CompletionContext,
     temperature: number,
     signal: AbortSignal

@@ -7,7 +7,7 @@ import {
 } from './config/settings';
 import { registerChatParticipant } from './chat/participant';
 import { StatusBar } from './ui/statusBar';
-import { PilotCodeInlineProvider } from './completions/inlineProvider';
+import { BoschCopilotInlineProvider } from './completions/inlineProvider';
 import { runDiagnose } from './commands/diagnose';
 import { prewarmCompletionModel } from './model/warmup';
 import { registerAllTools } from './tools';
@@ -17,12 +17,12 @@ let logger: Logger | undefined;
 export async function activate(
   context: vscode.ExtensionContext
 ): Promise<void> {
-  logger = new Logger('PilotCode');
+  logger = new Logger('Bosch-CoPilot');
   context.subscriptions.push({ dispose: () => logger?.dispose() });
 
   const settings = readSettings();
   logger.setLevel(settings.logLevel);
-  logger.info('PilotCode activating', {
+  logger.info('Bosch-CoPilot activating', {
     version: context.extension.packageJSON.version,
     endpoint: settings.endpoint,
     chatModel: settings.chatModel,
@@ -38,7 +38,7 @@ export async function activate(
 
   // --- Phase 2: inline completions ---------------------------------------
   const statusBar = new StatusBar();
-  const inlineProvider = new PilotCodeInlineProvider(
+  const inlineProvider = new BoschCopilotInlineProvider(
     readSettings,
     logger,
     statusBar
@@ -71,23 +71,23 @@ export async function activate(
 
   // --- Commands ----------------------------------------------------------
   context.subscriptions.push(
-    vscode.commands.registerCommand('pilotcode.openSettings', () => {
+    vscode.commands.registerCommand('bosch-copilot.openSettings', () => {
       void vscode.commands.executeCommand(
         'workbench.action.openSettings',
-        '@ext:chandru-kumar.pilotcode'
+        '@ext:chandru-kumar.bosch-copilot'
       );
     }),
-    vscode.commands.registerCommand('pilotcode.showOutput', () => {
+    vscode.commands.registerCommand('bosch-copilot.showOutput', () => {
       logger?.show();
     }),
-    vscode.commands.registerCommand('pilotcode.testConnection', async () => {
+    vscode.commands.registerCommand('bosch-copilot.testConnection', async () => {
       await testConnectionCommand(logger!);
     }),
-    vscode.commands.registerCommand('pilotcode.diagnose', async () => {
+    vscode.commands.registerCommand('bosch-copilot.diagnose', async () => {
       await runDiagnose(logger!);
     }),
     vscode.commands.registerCommand(
-      'pilotcode.toggleInlineCompletions',
+      'bosch-copilot.toggleInlineCompletions',
       async () => {
         const cfg = vscode.workspace.getConfiguration(CONFIG_SECTION);
         const current = cfg.get<boolean>('enableInlineCompletions', true);
@@ -97,13 +97,13 @@ export async function activate(
           vscode.ConfigurationTarget.Global
         );
         void vscode.window.showInformationMessage(
-          `PilotCode inline completions ${!current ? 'enabled' : 'disabled'}.`
+          `Bosch-CoPilot inline completions ${!current ? 'enabled' : 'disabled'}.`
         );
       }
     )
   );
 
-  logger.info('PilotCode activated.');
+  logger.info('Bosch-CoPilot activated.');
 
   // Kick off a background prewarm a moment after activation completes
   // so the user's first inline completion is fast. Fire-and-forget;
@@ -114,7 +114,7 @@ export async function activate(
 }
 
 export function deactivate(): void {
-  logger?.info('PilotCode deactivating');
+  logger?.info('Bosch-CoPilot deactivating');
 }
 
 async function testConnectionCommand(log: Logger): Promise<void> {
@@ -125,7 +125,7 @@ async function testConnectionCommand(log: Logger): Promise<void> {
   await vscode.window.withProgress(
     {
       location: vscode.ProgressLocation.Notification,
-      title: `PilotCode: pinging ${s.endpoint} ...`,
+      title: `Bosch-CoPilot: pinging ${s.endpoint} ...`,
       cancellable: true,
     },
     async (_progress, token) => {
@@ -152,20 +152,20 @@ async function testConnectionCommand(log: Logger): Promise<void> {
         const truncated = ids.slice(0, 8).join(', ') || '(none reported)';
         const more = ids.length > 8 ? `, +${ids.length - 8} more` : '';
         void vscode.window.showInformationMessage(
-          `PilotCode: endpoint reachable. Models: ${truncated}${more}`
+          `Bosch-CoPilot: endpoint reachable. Models: ${truncated}${more}`
         );
       } catch (err) {
         log.error('Endpoint test failed', err);
         const msg = err instanceof Error ? err.message : String(err);
         const choice = await vscode.window.showErrorMessage(
-          `PilotCode: could not reach ${s.endpoint} (${msg}).`,
+          `Bosch-CoPilot: could not reach ${s.endpoint} (${msg}).`,
           'Open Settings',
           'Show Logs'
         );
         if (choice === 'Open Settings') {
           await vscode.commands.executeCommand(
             'workbench.action.openSettings',
-            '@ext:chandru-kumar.pilotcode'
+            '@ext:chandru-kumar.bosch-copilot'
           );
         } else if (choice === 'Show Logs') {
           log.show();

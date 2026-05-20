@@ -7,7 +7,7 @@ import type * as vscode from 'vscode';
 export interface ToolDescriptor {
   /** Name as seen by the LLM (no prefix), e.g. `read_file`. */
   llmName: string;
-  /** Name registered with `vscode.lm.registerTool`, e.g. `pilotcode_read_file`. */
+  /** Name registered with `vscode.lm.registerTool`, e.g. `bosch_copilot_read_file`. */
   vsCodeName: string;
   /** Description sent to the model (be specific — the model uses this to pick). */
   description: string;

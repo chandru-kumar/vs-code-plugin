@@ -96,7 +96,7 @@ class GrepWorkspaceTool
 export const grepWorkspaceTool: ToolDefinition<GrepWorkspaceInput> = {
   descriptor: {
     llmName: 'grep_workspace',
-    vsCodeName: 'pilotcode_grep_workspace',
+    vsCodeName: 'bosch_copilot_grep_workspace',
     description:
       'Search the workspace for a literal substring across files. Returns ' +
       '"path:line: matched text" rows. Optional `glob` to scope the search ' +

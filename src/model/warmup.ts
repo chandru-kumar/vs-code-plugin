@@ -16,7 +16,7 @@ import type { CompletionContext } from '../completions/contextGatherer';
 export async function prewarmCompletionModel(logger: Logger): Promise<void> {
   const s = readSettings();
   if (!s.prewarmOnActivation) {
-    logger.debug('prewarm: skipped — pilotcode.prewarmOnActivation is false');
+    logger.debug('prewarm: skipped — bosch-copilot.prewarmOnActivation is false');
     return;
   }
   if (!s.enableInlineCompletions) {
@@ -25,10 +25,10 @@ export async function prewarmCompletionModel(logger: Logger): Promise<void> {
   }
 
   const ctx: CompletionContext = {
-    prefix: '// pilotcode prewarm\n',
+    prefix: '// bosch-copilot prewarm\n',
     suffix: '\n',
     languageId: 'javascript',
-    fileName: '.pilotcode-prewarm',
+    fileName: '.bosch-copilot-prewarm',
   };
 
   const cts = new vscode.CancellationTokenSource();

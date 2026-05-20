@@ -95,7 +95,7 @@ class RunTerminalTool implements vscode.LanguageModelTool<RunTerminalInput> {
 export const runTerminalTool: ToolDefinition<RunTerminalInput> = {
   descriptor: {
     llmName: 'run_terminal_command',
-    vsCodeName: 'pilotcode_run_terminal_command',
+    vsCodeName: 'bosch_copilot_run_terminal_command',
     description:
       'Run a shell command in the workspace and return its stdout / stderr / ' +
       'exit code. The user is always asked to confirm first. Optional `cwd` ' +

@@ -1,8 +1,8 @@
 {
-  "name": "pilotcode",
-  "displayName": "PilotCode",
+  "name": "bosch-copilot",
+  "displayName": "Bosch-CoPilot",
   "description": "Local-first, offline-capable Copilot clone for VS Code powered by Qwen / Ollama / any OpenAI-compatible endpoint. Inline completions, chat, agentic mode, and full MCP support.",
-  "version": "0.4.0",
+  "version": "0.4.1",
   "publisher": "chandru-kumar",
   "private": true,
   "license": "MIT",
@@ -47,9 +47,9 @@
   "contributes": {
     "chatParticipants": [
       {
-        "id": "pilotcode.chat",
-        "name": "pilotcode",
-        "fullName": "PilotCode",
+        "id": "bosch-copilot.chat",
+        "name": "bosch-copilot",
+        "fullName": "Bosch-CoPilot",
         "description": "Local-first AI coding assistant powered by Qwen / Ollama.",
         "isSticky": true,
         "commands": [
@@ -74,59 +74,59 @@
     ],
     "commands": [
       {
-        "command": "pilotcode.openSettings",
-        "title": "PilotCode: Open Settings",
-        "category": "PilotCode"
+        "command": "bosch-copilot.openSettings",
+        "title": "Bosch-CoPilot: Open Settings",
+        "category": "Bosch-CoPilot"
       },
       {
-        "command": "pilotcode.showOutput",
-        "title": "PilotCode: Show Output Channel",
-        "category": "PilotCode"
+        "command": "bosch-copilot.showOutput",
+        "title": "Bosch-CoPilot: Show Output Channel",
+        "category": "Bosch-CoPilot"
       },
       {
-        "command": "pilotcode.testConnection",
-        "title": "PilotCode: Test Model Endpoint Connection",
-        "category": "PilotCode"
+        "command": "bosch-copilot.testConnection",
+        "title": "Bosch-CoPilot: Test Model Endpoint Connection",
+        "category": "Bosch-CoPilot"
       },
       {
-        "command": "pilotcode.diagnose",
-        "title": "PilotCode: Diagnose (endpoint + models + test completion)",
-        "category": "PilotCode"
+        "command": "bosch-copilot.diagnose",
+        "title": "Bosch-CoPilot: Diagnose (endpoint + models + test completion)",
+        "category": "Bosch-CoPilot"
       },
       {
-        "command": "pilotcode.toggleInlineCompletions",
-        "title": "PilotCode: Toggle Inline Completions",
-        "category": "PilotCode"
+        "command": "bosch-copilot.toggleInlineCompletions",
+        "title": "Bosch-CoPilot: Toggle Inline Completions",
+        "category": "Bosch-CoPilot"
       }
     ],
     "configuration": {
-      "title": "PilotCode",
+      "title": "Bosch-CoPilot",
       "properties": {
-        "pilotcode.endpoint": {
+        "bosch-copilot.endpoint": {
           "type": "string",
           "default": "http://localhost:11434/v1",
           "description": "OpenAI-compatible base URL. Examples: Ollama -> http://localhost:11434/v1 ; LM Studio -> http://localhost:1234/v1 ; vLLM -> http://localhost:8000/v1",
           "order": 1
         },
-        "pilotcode.apiKey": {
+        "bosch-copilot.apiKey": {
           "type": "string",
           "default": "",
           "description": "API key (only required for remote/cloud endpoints; leave empty for local Ollama/LM Studio).",
           "order": 2
         },
-        "pilotcode.chatModel": {
+        "bosch-copilot.chatModel": {
           "type": "string",
           "default": "qwen2.5-coder:7b",
           "description": "Model name to use for chat & agentic tasks. Examples: qwen2.5-coder:7b, qwen3-coder:14b, llama3.1:8b.",
           "order": 3
         },
-        "pilotcode.completionModel": {
+        "bosch-copilot.completionModel": {
           "type": "string",
           "default": "qwen2.5-coder:1.5b-base",
           "description": "Smaller model used for fast inline (ghost-text) completions. A *base* model (not instruct) is recommended.",
           "order": 4
         },
-        "pilotcode.maxContextTokens": {
+        "bosch-copilot.maxContextTokens": {
           "type": "number",
           "default": 8192,
           "minimum": 1024,
@@ -134,7 +134,7 @@
           "description": "Maximum number of tokens of context (prompt + completion) the model can handle.",
           "order": 5
         },
-        "pilotcode.temperature": {
+        "bosch-copilot.temperature": {
           "type": "number",
           "default": 0.2,
           "minimum": 0,
@@ -142,19 +142,19 @@
           "description": "Sampling temperature for chat responses. Lower = more deterministic.",
           "order": 6
         },
-        "pilotcode.enableInlineCompletions": {
+        "bosch-copilot.enableInlineCompletions": {
           "type": "boolean",
           "default": true,
           "description": "Enable inline ghost-text completions (press Tab to accept, Alt+] / Alt+[ to cycle suggestions).",
           "order": 7
         },
-        "pilotcode.enableTelemetry": {
+        "bosch-copilot.enableTelemetry": {
           "type": "boolean",
           "default": false,
-          "description": "PilotCode is offline-first and ships with telemetry OFF. Toggle on only if you want to help improve the extension.",
+          "description": "Bosch-CoPilot is offline-first and ships with telemetry OFF. Toggle on only if you want to help improve the extension.",
           "order": 8
         },
-        "pilotcode.logLevel": {
+        "bosch-copilot.logLevel": {
           "type": "string",
           "enum": [
             "trace",
@@ -164,10 +164,10 @@
             "error"
           ],
           "default": "info",
-          "description": "Verbosity for the PilotCode output channel.",
+          "description": "Verbosity for the Bosch-CoPilot output channel.",
           "order": 9
         },
-        "pilotcode.completionStrategy": {
+        "bosch-copilot.completionStrategy": {
           "type": "string",
           "enum": [
             "auto",
@@ -183,7 +183,7 @@
           "description": "How inline completions are prompted. 'auto' is recommended.",
           "order": 10
         },
-        "pilotcode.completionDebounceMs": {
+        "bosch-copilot.completionDebounceMs": {
           "type": "number",
           "default": 250,
           "minimum": 0,
@@ -191,7 +191,7 @@
           "description": "Idle time (ms) to wait after the last keystroke before requesting a completion. Lower = snappier but more requests.",
           "order": 11
         },
-        "pilotcode.completionMaxTokens": {
+        "bosch-copilot.completionMaxTokens": {
           "type": "number",
           "default": 256,
           "minimum": 16,
@@ -199,7 +199,7 @@
           "description": "Maximum tokens generated per inline completion.",
           "order": 12
         },
-        "pilotcode.completionTemperature": {
+        "bosch-copilot.completionTemperature": {
           "type": "number",
           "default": 0.1,
           "minimum": 0,
@@ -207,7 +207,7 @@
           "description": "Sampling temperature for inline completions. Low values keep completions deterministic.",
           "order": 13
         },
-        "pilotcode.completionPrefixLines": {
+        "bosch-copilot.completionPrefixLines": {
           "type": "number",
           "default": 80,
           "minimum": 0,
@@ -215,7 +215,7 @@
           "description": "How many lines *before* the cursor to include as context.",
           "order": 14
         },
-        "pilotcode.completionSuffixLines": {
+        "bosch-copilot.completionSuffixLines": {
           "type": "number",
           "default": 40,
           "minimum": 0,
@@ -223,7 +223,7 @@
           "description": "How many lines *after* the cursor to include as context.",
           "order": 15
         },
-        "pilotcode.completionMaxContextChars": {
+        "bosch-copilot.completionMaxContextChars": {
           "type": "number",
           "default": 8000,
           "minimum": 500,
@@ -231,13 +231,13 @@
           "description": "Hard cap on prefix+suffix characters sent to the model. Text closest to the cursor is kept.",
           "order": 16
         },
-        "pilotcode.completionMultiline": {
+        "bosch-copilot.completionMultiline": {
           "type": "boolean",
           "default": true,
           "description": "Allow multi-line completions. When off, completions are truncated at the first newline.",
           "order": 17
         },
-        "pilotcode.completionCount": {
+        "bosch-copilot.completionCount": {
           "type": "number",
           "default": 1,
           "minimum": 1,
@@ -245,19 +245,19 @@
           "description": "Number of alternative suggestions to request (cycle with Alt+] / Alt+[). >1 issues parallel requests and is slower on local models.",
           "order": 18
         },
-        "pilotcode.prewarmOnActivation": {
+        "bosch-copilot.prewarmOnActivation": {
           "type": "boolean",
           "default": true,
           "description": "Fire a tiny throw-away completion shortly after activation so Ollama loads the completion model into RAM. Eliminates the 10-30s cold-load latency on your first real ghost-text request.",
           "order": 19
         },
-        "pilotcode.agent.enabled": {
+        "bosch-copilot.agent.enabled": {
           "type": "boolean",
           "default": true,
           "description": "Route chat requests through the agent loop (ReAct + tool calling). Turn off to use plain streaming chat with no tools.",
           "order": 20
         },
-        "pilotcode.agent.maxIterations": {
+        "bosch-copilot.agent.maxIterations": {
           "type": "number",
           "default": 5,
           "minimum": 1,
@@ -269,13 +269,13 @@
     },
     "languageModelTools": [
       {
-        "name": "pilotcode_read_file",
+        "name": "bosch_copilot_read_file",
         "displayName": "Read File",
         "modelDescription": "Read the contents of a workspace-relative file and return the full UTF-8 text. Path must be relative to the workspace root.",
         "userDescription": "Read a file from your workspace.",
         "toolReferenceName": "read_file",
         "canBeReferencedInPrompt": true,
-        "tags": ["pilotcode", "workspace", "read"],
+        "tags": ["bosch-copilot", "workspace", "read"],
         "inputSchema": {
           "type": "object",
           "properties": {
@@ -288,13 +288,13 @@
         }
       },
       {
-        "name": "pilotcode_list_directory",
+        "name": "bosch_copilot_list_directory",
         "displayName": "List Directory",
         "modelDescription": "List the immediate children of a workspace directory. Use \".\" for the workspace root.",
         "userDescription": "List the contents of a directory.",
         "toolReferenceName": "list_directory",
         "canBeReferencedInPrompt": true,
-        "tags": ["pilotcode", "workspace", "read"],
+        "tags": ["bosch-copilot", "workspace", "read"],
         "inputSchema": {
           "type": "object",
           "properties": {
@@ -307,13 +307,13 @@
         }
       },
       {
-        "name": "pilotcode_grep_workspace",
+        "name": "bosch_copilot_grep_workspace",
         "displayName": "Grep Workspace",
         "modelDescription": "Search the workspace for a literal substring across files. Returns path:line:text rows.",
         "userDescription": "Search your workspace for a substring.",
         "toolReferenceName": "grep_workspace",
         "canBeReferencedInPrompt": true,
-        "tags": ["pilotcode", "workspace", "search"],
+        "tags": ["bosch-copilot", "workspace", "search"],
         "inputSchema": {
           "type": "object",
           "properties": {
@@ -334,13 +334,13 @@
         }
       },
       {
-        "name": "pilotcode_write_file",
+        "name": "bosch_copilot_write_file",
         "displayName": "Write File",
         "modelDescription": "Write text content to a workspace-relative file. Overwrites by default; set createOnly:true to fail if the file already exists. Asks the user to confirm.",
         "userDescription": "Write a file in your workspace (with confirmation).",
         "toolReferenceName": "write_file",
         "canBeReferencedInPrompt": true,
-        "tags": ["pilotcode", "workspace", "write", "destructive"],
+        "tags": ["bosch-copilot", "workspace", "write", "destructive"],
         "inputSchema": {
           "type": "object",
           "properties": {
@@ -352,13 +352,13 @@
         }
       },
       {
-        "name": "pilotcode_apply_diff",
+        "name": "bosch_copilot_apply_diff",
         "displayName": "Apply Diff",
         "modelDescription": "Replace a unique exact substring in a workspace file. oldText must match exactly once. Asks the user to confirm.",
         "userDescription": "Apply a targeted patch to a file (with confirmation).",
         "toolReferenceName": "apply_diff",
         "canBeReferencedInPrompt": true,
-        "tags": ["pilotcode", "workspace", "write", "destructive"],
+        "tags": ["bosch-copilot", "workspace", "write", "destructive"],
         "inputSchema": {
           "type": "object",
           "properties": {
@@ -370,13 +370,13 @@
         }
       },
       {
-        "name": "pilotcode_run_terminal_command",
+        "name": "bosch_copilot_run_terminal_command",
         "displayName": "Run Terminal Command",
         "modelDescription": "Run a shell command in the workspace and return stdout, stderr, and exit code. Asks the user to confirm.",
         "userDescription": "Run a shell command (with confirmation).",
         "toolReferenceName": "run_terminal_command",
         "canBeReferencedInPrompt": true,
-        "tags": ["pilotcode", "workspace", "execute", "destructive"],
+        "tags": ["bosch-copilot", "workspace", "execute", "destructive"],
         "inputSchema": {
           "type": "object",
           "properties": {

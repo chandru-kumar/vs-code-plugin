@@ -70,7 +70,7 @@ function buildSystemPrompt(): string {
   const ws = vscode.workspace.workspaceFolders;
   const wsName = ws?.[0]?.name ?? '(no workspace)';
   return [
-    'You are PilotCode, a local-first AI coding assistant integrated into VS Code.',
+    'You are Bosch-CoPilot, a local-first AI coding assistant integrated into VS Code.',
     'You help the user write, understand, refactor, and test code in their workspace.',
     'Always wrap code in fenced code blocks with the correct language identifier.',
     'Be concise and precise. Prefer concrete answers over hedging.',

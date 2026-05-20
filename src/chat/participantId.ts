@@ -3,4 +3,4 @@
  * Imported by participant.ts and contextBuilder.ts to avoid a circular
  * dependency between them.
  */
-export const PARTICIPANT_ID = 'pilotcode.chat';
+export const PARTICIPANT_ID = 'bosch-copilot.chat';
