@@ -50,6 +50,13 @@ export function registerChatParticipant(
 
     const started = Date.now();
 
+    // Show immediate progress so the user knows we're working.
+    stream.progress('Thinking…');
+    logger.info(
+      `chat: starting request (model=${settings.chatModel}, agent=${settings.agentEnabled}, ` +
+        `msgs=${messages.length}, endpoint=${settings.endpoint})`
+    );
+
     try {
       // --- Agent mode (Phase 4) -----------------------------------------
       if (settings.agentEnabled && tools.length > 0) {
@@ -68,7 +75,10 @@ export function registerChatParticipant(
             `${agentResult.elapsedMs}ms (first activity ${agentResult.firstActivityMs}ms, ` +
             `model=${settings.chatModel}${request.command ? `, /${request.command}` : ''})`
         );
-        stream.button({ command: 'bosch-copilot.diagnose', title: 'Run Diagnose' });
+        stream.button({
+          command: 'bosch-copilot.diagnose',
+          title: 'Run Diagnose',
+        });
         return {
           metadata: {
             mode: 'agent',
@@ -83,15 +93,18 @@ export function registerChatParticipant(
       }
 
       // --- Streaming mode (agent disabled) ------------------------------
+      logger.debug('chat: using streaming mode (agent disabled)');
       let totalChars = 0;
       let firstTokenMs = -1;
       for await (const chunk of client.stream(messages, token)) {
         if (token.isCancellationRequested) {
+          logger.info('chat: cancelled by user');
           break;
         }
         if (chunk.delta) {
           if (firstTokenMs < 0) {
             firstTokenMs = Date.now() - started;
+            logger.info(`chat: first token received in ${firstTokenMs}ms`);
           }
           stream.markdown(chunk.delta);
           totalChars += chunk.delta.length;
@@ -100,13 +113,23 @@ export function registerChatParticipant(
           break;
         }
       }
+      if (totalChars === 0 && !token.isCancellationRequested) {
+        logger.warn('chat: model returned an empty response (0 chars)');
+        stream.markdown(
+          '⚠️ The model returned an empty response. This may indicate the model is overloaded ' +
+            'or not fully loaded into memory. Try again, or run **Bosch-CoPilot: Diagnose**.\n'
+        );
+      }
       const elapsed = Date.now() - started;
       logger.info(
         `chat: streamed ${totalChars} chars in ${elapsed}ms ` +
           `(first token ${firstTokenMs}ms, model=${settings.chatModel}` +
           `${request.command ? `, /${request.command}` : ''})`
       );
-      stream.button({ command: 'bosch-copilot.diagnose', title: 'Run Diagnose' });
+      stream.button({
+        command: 'bosch-copilot.diagnose',
+        title: 'Run Diagnose',
+      });
       return {
         metadata: {
           mode: 'stream',
@@ -153,7 +176,9 @@ export function registerChatParticipant(
   };
 
   context.subscriptions.push(participant);
-  logger.info(`Registered chat participant @bosch-copilot (id=${PARTICIPANT_ID})`);
+  logger.info(
+    `Registered chat participant @bosch-copilot (id=${PARTICIPANT_ID})`
+  );
   return participant;
 }
 

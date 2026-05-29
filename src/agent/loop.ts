@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import type { Logger } from '../utils/logger';
 import type { ChatClient } from '../model/chatClient';
+import { ToolsNotSupportedError } from '../model/completionClient';
 import type { ChatMessage, OpenAITool, ToolCall } from '../model/types';
 import type { ToolDescriptor } from './types';
 
@@ -60,6 +61,8 @@ export class AgentLoop {
       this.tools.map((t) => [t.llmName, t])
     );
 
+    options.stream.progress('Thinking…');
+
     while (iterations < options.maxIterations) {
       iterations++;
       if (token.isCancellationRequested) {
@@ -70,10 +73,47 @@ export class AgentLoop {
         `agent: iteration ${iterations}/${options.maxIterations}`
       );
 
-      const result = await this.chatClient.chat(messages, token, {
-        tools: openAITools,
-        toolChoice: 'auto',
-      });
+      let result;
+      try {
+        result = await this.chatClient.chat(messages, token, {
+          tools: openAITools,
+          toolChoice: 'auto',
+        });
+      } catch (err) {
+        if (err instanceof ToolsNotSupportedError) {
+          // Model doesn't support native tool calling — fall back to
+          // streaming without tools so the user sees tokens immediately.
+          this.logger.warn(
+            `agent: model '${err.modelName}' does not support tools, ` +
+              `falling back to streaming chat`
+          );
+          options.stream.markdown(
+            `> ⚠️ Model \`${err.modelName}\` does not support tool calling. ` +
+              `Answering without tools — consider switching \`bosch-copilot.chatModel\` ` +
+              `to an instruct/chat model (e.g. \`qwen2.5-coder:7b\`).\n\n`
+          );
+          for await (const chunk of this.chatClient.stream(messages, token)) {
+            if (token.isCancellationRequested) {
+              break;
+            }
+            if (chunk.delta) {
+              options.stream.markdown(chunk.delta);
+              totalChars += chunk.delta.length;
+            }
+            if (chunk.done) {
+              break;
+            }
+          }
+          return {
+            iterations,
+            toolCalls,
+            totalChars,
+            elapsedMs: Date.now() - started,
+            firstActivityMs: Date.now() - started,
+          };
+        }
+        throw err;
+      }
 
       // Always append the assistant's reply (tool_calls or content) so
       // the next loop iteration has the full conversation.
@@ -91,6 +131,17 @@ export class AgentLoop {
           }
           options.stream.markdown(content);
           totalChars += content.length;
+        } else {
+          // Empty response with no tool calls — model returned nothing useful.
+          this.logger.warn(
+            `agent: model returned empty content with no tool calls ` +
+              `(iteration ${iterations}, finish_reason=${result.finishReason})`
+          );
+          options.stream.markdown(
+            '⚠️ The model returned an empty response. This may indicate the model is overloaded, ' +
+              'still loading, or does not support tool calling properly. ' +
+              'Try again, or switch to a different model.\n'
+          );
         }
         this.logger.info(
           `agent: done — ${iterations} iteration(s), ${toolCalls} tool call(s), ` +
@@ -229,7 +280,9 @@ export class AgentLoop {
       });
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      options.stream.markdown(`❌ \`${name}\` failed: ${escapeBackticks(msg)}\n`);
+      options.stream.markdown(
+        `❌ \`${name}\` failed: ${escapeBackticks(msg)}\n`
+      );
       this.logger.warn(`agent: tool '${name}' failed`, err);
       messages.push({
         role: 'tool',
@@ -243,9 +296,7 @@ export class AgentLoop {
 
 // ---------------------------------------------------------------------------
 
-function serializeToolResult(
-  result: vscode.LanguageModelToolResult
-): string {
+function serializeToolResult(result: vscode.LanguageModelToolResult): string {
   const parts: string[] = [];
   for (const c of result.content) {
     if (c instanceof vscode.LanguageModelTextPart) {

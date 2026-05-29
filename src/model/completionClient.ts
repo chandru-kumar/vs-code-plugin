@@ -29,6 +29,18 @@ export class ModelNotFoundError extends Error {
   }
 }
 
+/**
+ * Thrown when the endpoint reports the configured model does not support
+ * tool / function calling. The agent loop catches this to fall back to a
+ * plain (no-tools) chat completion.
+ */
+export class ToolsNotSupportedError extends Error {
+  constructor(public readonly modelName: string) {
+    super(`Model '${modelName}' does not support tools`);
+    this.name = 'ToolsNotSupportedError';
+  }
+}
+
 interface OpenAICompletionsResponse {
   choices?: Array<{ text?: string }>;
 }
@@ -145,9 +157,7 @@ export class CompletionClient {
         // Ollama / vLLM / LM Studio bodies all look roughly like:
         //   {"error":{"message":"model 'xxx' not found", ...}}
         // Extract the model name to throw a typed, user-actionable error.
-        const m = errText.match(
-          /model ['"]?([^'"\s]+)['"]?\s+not\s+found/i
-        );
+        const m = errText.match(/model ['"]?([^'"\s]+)['"]?\s+not\s+found/i);
         if (m) {
           throw new ModelNotFoundError(m[1]);
         }
