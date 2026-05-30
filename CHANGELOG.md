@@ -4,6 +4,64 @@ All notable changes to Bosch-CoPilot will be documented here. This project follo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.0] - 2026-05-29
+
+### Added — Multi-provider model support (Bosch Model Farm)
+- **`bosch-copilot.apiType`** selects the endpoint family:
+  `azure-openai` (default), `anthropic` (Vertex AI Claude),
+  `vertex-openai` (Vertex OpenAI-compatible), `openai`
+  (Ollama / LM Studio / vLLM).
+- `buildRequestUrl()` builds the correct URL per type (Azure deployment
+  path + `api-version`, Vertex `rawPredict`/`streamRawPredict`, generic).
+- `bosch-copilot.apiKeyHeader` — send the key as `Authorization: Bearer …`
+  (default) or via a custom header (e.g. the Bosch platform
+  `genaiplatform-farm-subscription-key`).
+- Full **Anthropic Messages API** translation: OpenAI ⇄ Anthropic for
+  messages, tools, tool-results, and responses; Anthropic SSE streaming.
+- **Reasoning-model handling** (`isReasoningModel`) — omits `temperature`
+  for o-series / GPT-5-nano which only accept the default.
+- **`max_completion_tokens` vs `max_tokens`** chosen automatically per
+  provider (`maxTokensKey`).
+- Request timeouts (300 s non-stream, 120 s stream) with clear messages.
+- Masked API-key logging + explicit warning when no key is set.
+
+### Added — Tool support hardening
+- `ToolsNotSupportedError` — when a model rejects tool calling the agent
+  loop falls back to plain streaming chat (with a notice) instead of
+  failing.
+- Empty-response detection in the agent loop and the streaming path.
+- `stream.progress('Thinking…')` for immediate feedback.
+
+### Added — Six code-analysis tools (12 tools total)
+Built for tracing code flow and making precise edits:
+- **`find_files`** — locate files by glob (fileSearch; names, not contents).
+- **`read_file_range`** — read a specific 1-based line range with gutters.
+- **`find_symbol`** — locate where a symbol is *defined* across the
+  workspace (language-server `executeWorkspaceSymbolProvider`).
+- **`document_outline`** — indented class/method/function outline of one
+  file (`executeDocumentSymbolProvider`).
+- **`find_references`** — all *usages* of a symbol (codeUsages;
+  `executeReferenceProvider`) — the key code-flow tool.
+- **`go_to_definition`** — resolve a usage to its definition
+  (`executeDefinitionProvider`).
+
+  The four language-server tools work out of the box for TypeScript /
+  JavaScript; other languages need their VS Code language extension active.
+
+### Changed
+- **`grep_workspace`** gained `isRegex` and `caseInsensitive` options
+  (still literal substring by default) and is now framed as the
+  *content* search counterpart to `find_files`.
+- **Uniform per-tool logging** — every tool invocation now logs to the
+  Output channel via a wrapper in `registerAllTools`:
+  `tool:<name> → invoke {args}` / `tool:<name> ✓ ok (Nms, C chars)` /
+  `tool:<name> ✗ failed (Nms)`. Covers tools invoked through the agent
+  loop *and* via `#tool` references.
+- `ToolDefinition.factory` now receives the shared `Logger` (tools that
+  don't need it ignore the argument).
+- Default `chatModel` / `completionModel` / `endpoint` now target the
+  Bosch Model Farm (GPT-4o-mini / GPT-5-nano).
+
 ## [0.4.1] - 2026-05-20
 
 ### Changed

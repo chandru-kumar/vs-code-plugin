@@ -2,7 +2,7 @@
   "name": "bosch-copilot",
   "displayName": "Bosch-CoPilot",
   "description": "AI coding assistant for VS Code powered by Bosch hosted Claude (Anthropic) and any OpenAI-compatible endpoint. Inline completions, chat, agentic mode, and full MCP support.",
-  "version": "0.4.1",
+  "version": "0.5.0",
   "publisher": "chandru-kumar",
   "private": true,
   "license": "MIT",
@@ -350,9 +350,9 @@
       },
       {
         "name": "bosch_copilot_grep_workspace",
-        "displayName": "Grep Workspace",
-        "modelDescription": "Search the workspace for a literal substring across files. Returns path:line:text rows.",
-        "userDescription": "Search your workspace for a substring.",
+        "displayName": "Search Text",
+        "modelDescription": "Search file CONTENTS for text (textSearch). Literal substring by default; set isRegex:true for a regex. Returns path:line:text rows. Use find_files to search file names instead.",
+        "userDescription": "Search your workspace file contents (text/regex).",
         "toolReferenceName": "grep_workspace",
         "canBeReferencedInPrompt": true,
         "tags": [
@@ -365,7 +365,7 @@
           "properties": {
             "query": {
               "type": "string",
-              "description": "Literal substring to search for (NOT a regex)."
+              "description": "Text to search for. Literal substring unless isRegex is true."
             },
             "glob": {
               "type": "string",
@@ -374,10 +374,204 @@
             "maxResults": {
               "type": "number",
               "description": "Max number of matches (1-200, default 50)."
+            },
+            "isRegex": {
+              "type": "boolean",
+              "description": "Treat query as a JavaScript regular expression (default false)."
+            },
+            "caseInsensitive": {
+              "type": "boolean",
+              "description": "Case-insensitive matching (default false)."
             }
           },
           "required": [
             "query"
+          ]
+        }
+      },
+      {
+        "name": "bosch_copilot_find_files",
+        "displayName": "Find Files",
+        "modelDescription": "Find files by GLOB against their path/name (fileSearch — searches names, not contents). E.g. \"**/*.ts\". Use grep_workspace to search file contents.",
+        "userDescription": "Find files by glob pattern.",
+        "toolReferenceName": "find_files",
+        "canBeReferencedInPrompt": true,
+        "tags": [
+          "bosch-copilot",
+          "workspace",
+          "search"
+        ],
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "glob": {
+              "type": "string",
+              "description": "Glob matched against file paths, e.g. \"src/**/*.ts\"."
+            },
+            "maxResults": {
+              "type": "number",
+              "description": "Max number of files (1-500, default 100)."
+            }
+          },
+          "required": [
+            "glob"
+          ]
+        }
+      },
+      {
+        "name": "bosch_copilot_read_file_range",
+        "displayName": "Read File Range",
+        "modelDescription": "Read a specific 1-based inclusive line range of a file, with line-number gutters. Prefer over read_file when you only need part of a large file.",
+        "userDescription": "Read a line range of a file.",
+        "toolReferenceName": "read_file_range",
+        "canBeReferencedInPrompt": true,
+        "tags": [
+          "bosch-copilot",
+          "workspace",
+          "read"
+        ],
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "path": {
+              "type": "string",
+              "description": "Workspace-relative file path."
+            },
+            "startLine": {
+              "type": "number",
+              "description": "First line to read (1-based, inclusive)."
+            },
+            "endLine": {
+              "type": "number",
+              "description": "Last line to read (1-based, inclusive)."
+            }
+          },
+          "required": [
+            "path",
+            "startLine",
+            "endLine"
+          ]
+        }
+      },
+      {
+        "name": "bosch_copilot_find_symbol",
+        "displayName": "Find Symbol",
+        "modelDescription": "Find where a symbol (class/function/method/interface/variable) is DEFINED in the workspace, by name, via the language server. Best first step for 'where is X defined'.",
+        "userDescription": "Find a symbol's definition by name.",
+        "toolReferenceName": "find_symbol",
+        "canBeReferencedInPrompt": true,
+        "tags": [
+          "bosch-copilot",
+          "workspace",
+          "code-analysis"
+        ],
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "query": {
+              "type": "string",
+              "description": "Symbol name or fragment, e.g. \"AgentLoop\"."
+            },
+            "maxResults": {
+              "type": "number",
+              "description": "Max symbols to return (1-200, default 50)."
+            }
+          },
+          "required": [
+            "query"
+          ]
+        }
+      },
+      {
+        "name": "bosch_copilot_document_outline",
+        "displayName": "Document Outline",
+        "modelDescription": "List the classes/methods/functions/fields of one file as an indented outline with line ranges, via the language server. Understand a file's shape before reading it fully.",
+        "userDescription": "Outline the symbols in a file.",
+        "toolReferenceName": "document_outline",
+        "canBeReferencedInPrompt": true,
+        "tags": [
+          "bosch-copilot",
+          "workspace",
+          "code-analysis"
+        ],
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "path": {
+              "type": "string",
+              "description": "Workspace-relative file path to outline."
+            }
+          },
+          "required": [
+            "path"
+          ]
+        }
+      },
+      {
+        "name": "bosch_copilot_find_references",
+        "displayName": "Find References",
+        "modelDescription": "Find ALL USAGES (references) of a symbol across the workspace via the language server. Provide the file path where it appears and the symbol name (optional line). Use to trace code flow.",
+        "userDescription": "Find all usages of a symbol.",
+        "toolReferenceName": "find_references",
+        "canBeReferencedInPrompt": true,
+        "tags": [
+          "bosch-copilot",
+          "workspace",
+          "code-analysis"
+        ],
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "path": {
+              "type": "string",
+              "description": "Workspace-relative file path containing an occurrence of the symbol."
+            },
+            "symbol": {
+              "type": "string",
+              "description": "The exact symbol name, e.g. \"AgentLoop\"."
+            },
+            "line": {
+              "type": "number",
+              "description": "Optional 1-based line where the symbol appears, to disambiguate."
+            }
+          },
+          "required": [
+            "path",
+            "symbol"
+          ]
+        }
+      },
+      {
+        "name": "bosch_copilot_go_to_definition",
+        "displayName": "Go To Definition",
+        "modelDescription": "Resolve where a symbol is DEFINED, starting from a usage of it, via the language server. Inverse of find_references.",
+        "userDescription": "Jump to a symbol's definition.",
+        "toolReferenceName": "go_to_definition",
+        "canBeReferencedInPrompt": true,
+        "tags": [
+          "bosch-copilot",
+          "workspace",
+          "code-analysis"
+        ],
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "path": {
+              "type": "string",
+              "description": "Workspace-relative file path containing a usage of the symbol."
+            },
+            "symbol": {
+              "type": "string",
+              "description": "The exact symbol name to resolve."
+            },
+            "line": {
+              "type": "number",
+              "description": "Optional 1-based line where the symbol is used, to disambiguate."
+            }
+          },
+          "required": [
+            "path",
+            "symbol"
           ]
         }
       },

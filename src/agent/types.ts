@@ -1,4 +1,5 @@
 import type * as vscode from 'vscode';
+import type { Logger } from '../utils/logger';
 
 /**
  * Static metadata about one tool — used to describe it to the LLM and to
@@ -20,8 +21,11 @@ export interface ToolDescriptor {
 /**
  * A descriptor plus a factory that produces the runtime tool implementation.
  * Each tool module exports one of these.
+ *
+ * The factory receives the shared {@link Logger}; tools that don't need it
+ * may ignore the argument (a zero-arg factory is still assignable here).
  */
 export interface ToolDefinition<TInput> {
   descriptor: ToolDescriptor;
-  factory: () => vscode.LanguageModelTool<TInput>;
+  factory: (logger: Logger) => vscode.LanguageModelTool<TInput>;
 }

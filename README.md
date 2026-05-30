@@ -5,7 +5,7 @@
 > endpoint. Inline completions, full chat sidebar, agentic tool-calling,
 > and native Model Context Protocol (MCP) support.
 
-**Status:** Phase 4 of 8 — agentic mode with ReAct loop + 6 local tools (read/list/grep/write/diff/terminal), plus everything from Phases 1–3.
+**Status:** Phase 4 of 8 — agentic mode with ReAct loop + **12 local tools** (read/range/list/find-files/grep + code-flow analysis via find-symbol/outline/references/definition + write/diff/terminal), multi-provider model support (Azure OpenAI / Anthropic-Vertex / Vertex-OpenAI / generic OpenAI), plus everything from Phases 1–3.
 
 ---
 
@@ -351,62 +351,134 @@ You: "Read src/app.ts and tell me what it does"
 └──────────────────────────────────────────────────────────────┘
 ```
 
-### The six built-in tools
+### The twelve built-in tools
 
-| Tool name            | Destructive? | What it does                                                                  |
-| -------------------- | ------------ | ----------------------------------------------------------------------------- |
-| `read_file`          | no           | Read a workspace file. Large files are truncated for the model.               |
-| `list_directory`     | no           | List immediate children of a directory (with F/D/L markers).                  |
-| `grep_workspace`     | no           | Literal-substring search across the workspace. Skips node_modules/dist/etc.   |
-| `write_file`         | **yes**      | Write a file (overwrite or create-only). **Confirmation card with preview.**  |
-| `apply_diff`         | **yes**      | Replace a unique substring in a file. **Confirmation card with diff preview.**|
-| `run_terminal_command` | **yes**    | Run a shell command. Returns stdout/stderr/exit code. **Confirmation card.**  |
+**Read / explore (no confirmation):**
+
+| Tool name          | What it does                                                                     |
+| ------------------ | ------------------------------------------------------------------------------- |
+| `read_file`        | Read a whole workspace file (large files truncated).                            |
+| `read_file_range`  | Read a specific 1-based line range with line-number gutters.                    |
+| `list_directory`   | List immediate children of a directory (F/D/L markers).                         |
+| `find_files`       | **fileSearch** — locate files by glob against their *names* (e.g. `**/*.ts`).   |
+| `grep_workspace`   | **textSearch** — search file *contents* (literal or `isRegex`, `caseInsensitive`). |
+
+**Code-flow analysis — language-server backed (no confirmation):**
+
+| Tool name           | What it does                                                                  |
+| ------------------- | ---------------------------------------------------------------------------- |
+| `find_symbol`       | Where a symbol is **defined** across the workspace, by name.                 |
+| `document_outline`  | Indented class/method/function outline of one file with line ranges.         |
+| `find_references`   | **codeUsages** — every place a symbol is used (trace code flow).             |
+| `go_to_definition`  | Resolve a usage to its definition (inverse of `find_references`).            |
+
+**Mutate (always require a confirmation card):**
+
+| Tool name              | What it does                                                              |
+| ---------------------- | ------------------------------------------------------------------------ |
+| `write_file`           | Write/create a file. Confirmation card with content preview.             |
+| `apply_diff`           | Replace a unique substring in a file. Confirmation card with diff preview.|
+| `run_terminal_command` | Run a shell command; returns stdout/stderr/exit code. Confirmation card.  |
 
 **Path safety:** all file tools reject absolute paths and `..` traversal —
 nothing outside the workspace folder can be touched.
 
-**Tool referencing:** because each tool has `canBeReferencedInPrompt: true`,
-you can also pin one with `#read_file` in chat to nudge the agent toward it.
+**Tool referencing:** every tool has `canBeReferencedInPrompt: true`, so you
+can pin one with `#find_references` / `#read_file` etc. in chat to nudge the
+agent toward it.
 
-### Manual test checklist for Phase 4 (Windows)
+**Language-server tools require a language extension.** `find_symbol`,
+`document_outline`, `find_references`, `go_to_definition` work out of the box
+for **TypeScript / JavaScript** (built-in). For Python, Java, etc. install
+that language's VS Code extension in the Extension Development Host first, or
+they'll return "no results / no language server".
 
-Do these in the **Extension Development Host** window with Ollama running
-and `bosch-copilot.chatModel` set to a model that supports tool calling
-(`qwen2.5-coder:7b` is the sweet spot — smaller chat models like
-`qwen3.5:latest` will work but call tools less reliably).
+### Uniform tool logging
 
-> ⚠️ **Important:** open a folder as the workspace before testing (e.g.
-> `File → Open Folder…` → pick the cloned `vs-code-plugin` itself). Tools
-> like `read_file` / `grep_workspace` need a workspace.
+Every tool invocation is logged to the **Bosch-CoPilot** Output channel
+(works for both agent-loop and `#tool` calls):
 
-| #  | Action                                                                                                  | Expected                                                                                          |
-| -- | ------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------- |
-| 1  | `git fetch && git checkout feature/agent-loop && git pull && npm install && npm run compile`            | Clean build                                                                                       |
-| 2  | F5 → in host: Output channel                                                                            | New line: `Registered 6 tool(s): read_file, list_directory, grep_workspace, write_file, …`        |
-| 3  | Chat: `@bosch-copilot list the files in src/`                                                               | "🔧 `list_directory({"path":"src"})`" → "✅ … → N chars" → final answer with the file list        |
-| 4  | Chat: `@bosch-copilot read src/extension.ts and tell me what activate() does`                               | Sequence shows `read_file` call, then a summary of `activate()`                                   |
-| 5  | Chat: `@bosch-copilot find all uses of "TODO" in the project`                                               | `grep_workspace` call, then a summary of matches                                                  |
-| 6  | Chat: `@bosch-copilot create a file scratch/hello.py that prints "hello from bosch-copilot"`                    | **Confirmation card appears** showing the file path + content preview + Continue / Cancel buttons |
-| 7  | Click **Continue** on step 6                                                                            | "✅ `write_file` → N chars"; file actually appears on disk                                        |
-| 8  | Click **Cancel** on a follow-up write (e.g. `@bosch-copilot write a README to scratch/README.md`)           | "❌ `write_file` failed: …user declined…" — no file written                                       |
-| 9  | Chat: `@bosch-copilot in src/extension.ts replace the deactivate() body with: logger?.info("bye")`         | `read_file` first, then `apply_diff` confirmation card with old/new preview                       |
-| 10 | Chat: `@bosch-copilot run "npm list" in this project and summarize`                                          | `run_terminal_command` confirmation card → after approval, stdout summarized                      |
-| 11 | After a multi-tool turn, check Output channel                                                           | `chat (agent): N iter, M tool call(s), C chars in Tms (first activity Fms, model=…)`              |
-| 12 | Mid-stream: press the stop button in the Chat input                                                     | Loop halts immediately; no orphaned model / tool calls                                            |
-| 13 | Set `bosch-copilot.agent.enabled` to `false`, ask `@bosch-copilot hi`                                            | Falls back to plain streaming (no tools), Output logs `chat: streamed N chars …` (no "agent")     |
-| 14 | Re-enable agent, set `bosch-copilot.agent.maxIterations` to `1`, ask something that needs 2+ tool calls    | Chat shows the "⚠️ Stopped after 1 agent iteration(s)" notice                                     |
+```
+tool:find_references → invoke {"path":"src/agent/loop.ts","symbol":"AgentLoop"}
+tool:find_references ✓ ok (142ms, 863 chars)
+```
 
-If 1–12 pass, Phase 4 is verified.
+Failures log `tool:<name> ✗ failed (Nms)` with the error.
 
-### Phase 4 troubleshooting
+### Manual test plan (Windows) — agentic tools
+
+Run in the **Extension Development Host** window. Because you're testing with
+**GPT-4o-mini / GPT-5-nano** (fast, reliable tool calling) on the Bosch Model
+Farm, set:
+
+- `bosch-copilot.apiType` = `azure-openai`
+- `bosch-copilot.endpoint`, `bosch-copilot.apiKey`, `bosch-copilot.apiKeyHeader`,
+  `bosch-copilot.apiVersion` per your Farm config
+- `bosch-copilot.chatModel` = your GPT-4o-mini / GPT-5-nano deployment name
+
+> ⚠️ **Open a folder first** (`File → Open Folder…` → the cloned
+> `vs-code-plugin` repo). The tools need a workspace. The TypeScript language
+> server analyses this repo automatically, so the code-nav tools work on it.
+
+**A. Setup & registration**
+
+| #  | Action                                                                          | Expected                                                                                    |
+| -- | ------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------- |
+| 1  | `git fetch && git checkout feature/agent-tools-complete && git pull && npm install && npm run compile` | Clean build                                                            |
+| 2  | F5 → host → Output: *Bosch-CoPilot: Show Output Channel*                         | `Registered 12 tool(s): read_file, read_file_range, list_directory, find_files, grep_workspace, find_symbol, document_outline, find_references, go_to_definition, write_file, apply_diff, run_terminal_command` |
+| 3  | Set `bosch-copilot.logLevel` = `debug`                                           | (so you see `tool:… → invoke` / `✓ ok` lines)                                               |
+
+**B. Read / search tools**
+
+| #  | Action                                                                          | Expected                                                                                    |
+| -- | ------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------- |
+| 4  | `@bosch-copilot find all TypeScript files under src/agent`                       | `🔧 find_files` → list incl. `src/agent/loop.ts`, `src/agent/types.ts`                       |
+| 5  | `@bosch-copilot search for "executeReferenceProvider" in the codebase`           | `🔧 grep_workspace` → hit in `src/tools/findReferences.ts`                                   |
+| 6  | `@bosch-copilot show lines 40-60 of src/agent/loop.ts`                            | `🔧 read_file_range` → those lines with gutters                                              |
+| 7  | `@bosch-copilot using regex, find all TODO or FIXME comments`                     | `🔧 grep_workspace` with `isRegex:true` (e.g. `TODO|FIXME`)                                  |
+
+**C. Code-flow analysis (the new power tools)**
+
+| #  | Action                                                                          | Expected                                                                                    |
+| -- | ------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------- |
+| 8  | `@bosch-copilot where is the class AgentLoop defined?`                            | `🔧 find_symbol` → `class AgentLoop — src/agent/loop.ts:NN`                                  |
+| 9  | `@bosch-copilot outline src/model/chatClient.ts`                                  | `🔧 document_outline` → indented list (ChatClient, chat, stream, chatAnthropic, …)           |
+| 10 | `@bosch-copilot find all references to AgentLoop across the project`             | `🔧 find_references` → usages incl. `src/chat/participant.ts`                                |
+| 11 | `@bosch-copilot in src/chat/participant.ts, where is AgentLoop defined? jump to it` | `🔧 go_to_definition` → `src/agent/loop.ts:NN`                                            |
+| 12 | `@bosch-copilot trace how a chat request flows from the participant into the tools` | Multi-step: find_symbol / find_references / read_file_range chained, then a flow summary  |
+
+**D. Editing (confirmation-gated)**
+
+| #  | Action                                                                          | Expected                                                                                    |
+| -- | ------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------- |
+| 13 | `@bosch-copilot create scratch/hello.ts that logs "hi from bosch-copilot"`        | `write_file` **confirmation card** with preview → Continue → file on disk                    |
+| 14 | Repeat a write, click **Cancel**                                                  | `❌ write_file failed: …declined…`; no file written                                          |
+| 15 | `@bosch-copilot in scratch/hello.ts change the message to "patched"`              | `read_file` then `apply_diff` **confirmation card** (old/new preview) → Continue → patched   |
+| 16 | `@bosch-copilot run "node -v" and tell me the version`                            | `run_terminal_command` **confirmation card** → after approval, version summarized            |
+
+**E. Agent control & robustness**
+
+| #  | Action                                                                          | Expected                                                                                    |
+| -- | ------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------- |
+| 17 | After a multi-tool turn, check Output                                            | `chat (agent): N iter, M tool call(s), …` + per-tool `tool:… ✓ ok (…ms, … chars)` lines     |
+| 18 | Mid-run, press the **stop** (square) button in the chat input                   | Loop halts immediately; no orphaned calls                                                    |
+| 19 | Set `bosch-copilot.agent.maxIterations` = `1`, ask a 2-tool question            | `⚠️ Stopped after 1 agent iteration(s)` notice                                               |
+| 20 | Set `bosch-copilot.agent.enabled` = `false`, ask `@bosch-copilot hi`            | Plain streaming, Output logs `chat: streamed N chars …` (no `agent`)                         |
+
+If A–E pass, the agentic-tools layer is verified. **Please send the Output
+channel logs** (at `debug`) — especially the `Registered 12 tool(s)` line, the
+`tool:… → invoke` / `✓ ok` lines, and any `✗ failed` errors.
+
+### Tools troubleshooting
 
 | Symptom | Fix |
 | --- | --- |
-| Agent never calls a tool, just chats | Your chat model may not support OpenAI-style function calling. Try `qwen2.5-coder:7b` (best), `qwen2.5:7b`, or `llama3.1:8b-instruct`. Smaller models often "forget" to use tools. |
-| Confirmation card doesn't appear before destructive tool | VS Code only renders chat-inline confirmation when invoked via `vscode.lm.invokeTool` with `toolInvocationToken` (which we do). Ensure you're on VS Code 1.95+. |
-| Tool throws "No workspace open" | Open a folder before chatting (`File → Open Folder…`). |
-| Agent loops forever doing the same thing | Lower `bosch-copilot.agent.maxIterations` to 3; rephrase the prompt; or switch to a larger model. |
-| `run_terminal_command` returns nothing on Windows | Check the command works in a normal PowerShell. Some Windows commands need `cmd /c …`. |
+| Code-nav tools return "no results / no language server" | The file's language extension isn't active. TS/JS work built-in; for Python etc. install that extension in the Extension Development Host. Also make sure the workspace folder is open so the language server can index it. |
+| Agent never calls a tool, just chats | The model decided not to. GPT-4o-mini / GPT-5-nano are reliable; very small local models often skip tools. Confirm `bosch-copilot.chatModel` and `apiType` are correct (Diagnose helps). |
+| `find_references` says "symbol not found" | Pass an explicit `line`, or use the exact identifier as it appears in the file. |
+| Confirmation card doesn't appear before a write | Only renders when invoked via the agent loop (`toolInvocationToken`). Ensure VS Code 1.95+ and that the agent is enabled. |
+| Tool throws "No workspace open" | Open a folder first (`File → Open Folder…`). |
+| Agent loops repeating the same tool | Lower `bosch-copilot.agent.maxIterations`; rephrase; the model may be confused by ambiguous file paths. |
 
 ---
 
@@ -440,12 +512,18 @@ vs-code-plugin/
 │   ├── agent/                       # ── Phase 4 ──
 │   │   ├── types.ts                  #   ToolDescriptor + ToolDefinition
 │   │   └── loop.ts                   #   ReAct loop
-│   ├── tools/                       # ── Phase 4 ──
-│   │   ├── index.ts                  #   registerAllTools
-│   │   ├── util.ts                   #   path guard + result helpers
+│   ├── tools/                       # ── Phase 4 (12 tools) ──
+│   │   ├── index.ts                  #   registerAllTools + logging wrapper
+│   │   ├── util.ts                   #   path guard, symbol/location helpers
 │   │   ├── readFile.ts               #   read_file
+│   │   ├── readFileRange.ts          #   read_file_range
 │   │   ├── listDirectory.ts          #   list_directory
-│   │   ├── grepWorkspace.ts          #   grep_workspace
+│   │   ├── findFiles.ts              #   find_files (fileSearch)
+│   │   ├── grepWorkspace.ts          #   grep_workspace (textSearch + regex)
+│   │   ├── findSymbol.ts             #   find_symbol (workspace symbols)
+│   │   ├── documentOutline.ts        #   document_outline (file symbols)
+│   │   ├── findReferences.ts         #   find_references (codeUsages)
+│   │   ├── goToDefinition.ts         #   go_to_definition
 │   │   ├── writeFile.ts              #   write_file (destructive)
 │   │   ├── applyDiff.ts              #   apply_diff (destructive)
 │   │   └── runTerminal.ts            #   run_terminal_command (destructive)
