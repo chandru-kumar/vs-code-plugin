@@ -37,6 +37,7 @@ export async function runDiagnose(logger: Logger): Promise<void> {
   write(
     JSON.stringify(
       {
+        apiType: s.apiType,
         endpoint: s.endpoint,
         chatModel: s.chatModel,
         completionModel: s.completionModel,
@@ -62,24 +63,52 @@ export async function runDiagnose(logger: Logger): Promise<void> {
     if (s.apiKey) {
       headers.Authorization = `Bearer ${s.apiKey}`;
     }
-    const res = await fetch(`${s.endpoint}/models`, { headers });
-    if (!res.ok) {
+    // Build a type-appropriate health-check URL.
+    const base = s.endpoint.replace(/\/+$/, '');
+    let healthUrl: string;
+    switch (s.apiType) {
+      case 'azure-openai':
+        healthUrl = s.apiVersion
+          ? `${base}/openai/models?api-version=${encodeURIComponent(s.apiVersion)}`
+          : `${base}/openai/models`;
+        break;
+      case 'anthropic':
+      case 'vertex-openai':
+        healthUrl = base;
+        break;
+      case 'openai':
+      default:
+        healthUrl = `${base}/models`;
+        break;
+    }
+    const res = await fetch(healthUrl, { headers });
+    if (!res.ok && s.apiType !== 'anthropic' && s.apiType !== 'vertex-openai') {
       throw new Error(`HTTP ${res.status} ${res.statusText}`);
     }
-    const body = (await res.json()) as { data?: Array<{ id: string }> };
-    available = (body.data ?? []).map((m) => m.id);
+    // For Vertex/Anthropic, any non-network-error response means reachable.
+    if (res.ok) {
+      const body = (await res.json().catch(() => ({}))) as {
+        data?: Array<{ id: string }>;
+      };
+      available = (body.data ?? []).map((m) => m.id);
+    }
     ok(
       `Endpoint reachable: \`${s.endpoint}\` (HTTP ${res.status}, ${Date.now() - t0}ms)`
     );
-    ok(`Available models (${available.length}):`);
-    available.forEach((m) => write(`    - \`${m}\``));
+    if (available.length > 0) {
+      ok(`Available models (${available.length}):`);
+      available.forEach((m) => write(`    - \`${m}\``));
+    }
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     bad(`Endpoint NOT reachable: \`${s.endpoint}\` — ${msg}`);
     write('');
     write('**Cannot continue without a reachable endpoint.** Common fixes:');
-    write('- Make sure Ollama is running (`ollama serve`, or launch the Ollama app)');
-    write('- Verify `bosch-copilot.endpoint` (default `http://localhost:11434/v1`)');
+    write('- Verify `bosch-copilot.endpoint` is correct for your apiType');
+    write('- Bosch BMF: `https://aoai-farm.bosch-temp.com/api`');
+    write(
+      '- Local Ollama: `http://localhost:11434/v1` (make sure Ollama is running)'
+    );
     write('- If using a remote host, set `bosch-copilot.apiKey` if required');
     logger.warn(`Diagnose: endpoint check failed — ${msg}`);
     await openMarkdownPanel(lines.join('\n'));
@@ -170,11 +199,21 @@ export async function runDiagnose(logger: Logger): Promise<void> {
   // ------------------------------------------------------------ env checks
   write('');
   write('## If you still see no ghost text');
-  write('1. **VS Code setting** `editor.inlineSuggest.enabled` must be `true` (default).');
-  write('2. **Status bar** at bottom-right should show `$(rocket) Bosch-CoPilot`. If it shows `$(circle-slash)`, click it to enable.');
-  write('3. **Competing extensions** — if GitHub Copilot is installed and active in the Extension Development Host, it may take precedence. Disable it for the host or set `github.copilot.enable` to `false`.');
-  write('4. **Model load time** — first request to a model can take 10–30 s while Ollama loads it into RAM. Pause typing for ~30 s after switching models so the first request can complete instead of being cancelled.');
-  write('5. **Document scheme** — completions only fire in `file://` or `untitled:` documents (not in output panels, search results, settings editor, etc.).');
+  write(
+    '1. **VS Code setting** `editor.inlineSuggest.enabled` must be `true` (default).'
+  );
+  write(
+    '2. **Status bar** at bottom-right should show `$(rocket) Bosch-CoPilot`. If it shows `$(circle-slash)`, click it to enable.'
+  );
+  write(
+    '3. **Competing extensions** — if GitHub Copilot is installed and active in the Extension Development Host, it may take precedence. Disable it for the host or set `github.copilot.enable` to `false`.'
+  );
+  write(
+    '4. **Model load time** — first request to a model can take 10–30 s while Ollama loads it into RAM. Pause typing for ~30 s after switching models so the first request can complete instead of being cancelled.'
+  );
+  write(
+    '5. **Document scheme** — completions only fire in `file://` or `untitled:` documents (not in output panels, search results, settings editor, etc.).'
+  );
 
   logger.info('Diagnose: complete');
   await openMarkdownPanel(lines.join('\n'));
@@ -195,10 +234,7 @@ async function openMarkdownPanel(content: string): Promise<void> {
   }
 }
 
-function closestMatch(
-  needle: string,
-  haystack: string[]
-): string | undefined {
+function closestMatch(needle: string, haystack: string[]): string | undefined {
   if (haystack.length === 0 || needle.length === 0) {
     return undefined;
   }

@@ -80,9 +80,12 @@ export async function activate(
     vscode.commands.registerCommand('bosch-copilot.showOutput', () => {
       logger?.show();
     }),
-    vscode.commands.registerCommand('bosch-copilot.testConnection', async () => {
-      await testConnectionCommand(logger!);
-    }),
+    vscode.commands.registerCommand(
+      'bosch-copilot.testConnection',
+      async () => {
+        await testConnectionCommand(logger!);
+      }
+    ),
     vscode.commands.registerCommand('bosch-copilot.diagnose', async () => {
       await runDiagnose(logger!);
     }),
@@ -119,7 +122,27 @@ export function deactivate(): void {
 
 async function testConnectionCommand(log: Logger): Promise<void> {
   const s = readSettings();
-  const url = `${s.endpoint}/models`;
+  // For local OpenAI-compatible endpoints, hit /models (standard listing).
+  // For Azure OpenAI, hit /openai/models?api-version=...
+  // For Vertex AI types, there's no models endpoint — test connectivity to base.
+  const base = s.endpoint.replace(/\/+$/, '');
+  let url: string;
+  switch (s.apiType) {
+    case 'azure-openai':
+      url = s.apiVersion
+        ? `${base}/openai/models?api-version=${encodeURIComponent(s.apiVersion)}`
+        : `${base}/openai/models`;
+      break;
+    case 'anthropic':
+    case 'vertex-openai':
+      // Vertex AI doesn't expose a models listing — just ping base URL.
+      url = base;
+      break;
+    case 'openai':
+    default:
+      url = `${base}/models`;
+      break;
+  }
   log.info(`Testing endpoint: GET ${url}`);
 
   await vscode.window.withProgress(
