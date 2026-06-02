@@ -8,6 +8,7 @@ import { applySlashCommand, SLASH_COMMANDS } from './slashCommands';
 import { PARTICIPANT_ID } from './participantId';
 import { AgentLoop } from '../agent/loop';
 import type { ToolDescriptor } from '../agent/types';
+import { getEditManager, type PendingEdit } from '../agent/editManager';
 
 export { PARTICIPANT_ID };
 
@@ -50,8 +51,6 @@ export function registerChatParticipant(
 
     const started = Date.now();
 
-    // Show immediate progress so the user knows we're working.
-    stream.progress('Thinking…');
     logger.info(
       `chat: starting request (model=${settings.chatModel}, agent=${settings.agentEnabled}, ` +
         `msgs=${messages.length}, endpoint=${settings.endpoint})`
@@ -60,6 +59,10 @@ export function registerChatParticipant(
     try {
       // --- Agent mode (Phase 4) -----------------------------------------
       if (settings.agentEnabled && tools.length > 0) {
+        // Start a fresh edit-staging session for this turn.
+        const editManager = getEditManager();
+        editManager?.beginTurn();
+
         const agentResult = await agent.run(
           messages,
           {
@@ -69,10 +72,22 @@ export function registerChatParticipant(
           },
           token
         );
+
+        // If the agent staged file edits, render the review UI.
+        const staged = editManager?.getStaged() ?? [];
+        if (staged.length > 0) {
+          renderEditReview(stream, staged);
+          logger.info(
+            `chat (agent): staged ${staged.length} edit(s) for review: ` +
+              staged.map((e) => e.relPath).join(', ')
+          );
+        }
+
         logger.info(
           `chat (agent): ${agentResult.iterations} iter, ` +
             `${agentResult.toolCalls} tool call(s), ${agentResult.totalChars} chars in ` +
             `${agentResult.elapsedMs}ms (first activity ${agentResult.firstActivityMs}ms, ` +
+            `staged=${staged.length}, ` +
             `model=${settings.chatModel}${request.command ? `, /${request.command}` : ''})`
         );
         stream.button({
@@ -84,6 +99,7 @@ export function registerChatParticipant(
             mode: 'agent',
             iterations: agentResult.iterations,
             toolCalls: agentResult.toolCalls,
+            stagedEdits: staged.length,
             elapsedMs: agentResult.elapsedMs,
             firstActivityMs: agentResult.firstActivityMs,
             chars: agentResult.totalChars,
@@ -183,6 +199,52 @@ export function registerChatParticipant(
 }
 
 // ---------------------------------------------------------------------------
+
+/**
+ * Render the staged-edits review block: a summary list of every file the
+ * agent proposes to change, each with an "Open Diff" button, plus global
+ * Apply All / Discard buttons. Nothing is written until the user applies.
+ */
+function renderEditReview(
+  stream: vscode.ChatResponseStream,
+  staged: PendingEdit[]
+): void {
+  const totalAdded = staged.reduce((n, e) => n + e.added, 0);
+  const totalRemoved = staged.reduce((n, e) => n + e.removed, 0);
+
+  stream.markdown(
+    `\n\n---\n\n### 📝 Proposed changes — ${staged.length} file${staged.length === 1 ? '' : 's'} ` +
+      `(+${totalAdded} / −${totalRemoved})\n\n` +
+      `Review each diff, then **Apply All** or **Discard**. Nothing is written ` +
+      `to disk until you apply.\n\n`
+  );
+
+  for (const e of staged) {
+    const kind = e.kind === 'create' ? '🆕 new' : '✏️ edit';
+    stream.markdown(
+      `- ${kind} \`${e.relPath}\` — +${e.added} / −${e.removed}\n`
+    );
+    stream.button({
+      command: 'bosch-copilot.openProposedDiff',
+      title: `Open Diff: ${shortName(e.relPath)}`,
+      arguments: [e.id],
+    });
+  }
+
+  stream.button({
+    command: 'bosch-copilot.applyPendingEdits',
+    title: `✅ Apply All (${staged.length})`,
+  });
+  stream.button({
+    command: 'bosch-copilot.discardPendingEdits',
+    title: '🗑️ Discard',
+  });
+}
+
+function shortName(rel: string): string {
+  const parts = rel.split('/');
+  return parts[parts.length - 1] || rel;
+}
 
 function renderHelp(stream: vscode.ChatResponseStream): void {
   const s = readSettings();

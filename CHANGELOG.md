@@ -4,6 +4,48 @@ All notable changes to Bosch-CoPilot will be documented here. This project follo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.0] - 2026-05-30
+
+### Added — Reviewable edits (diff tab + Apply/Discard)
+- File edits are now **staged**, not written immediately. `write_file` and
+  `apply_diff` record proposed changes in a new **`EditManager`** instead of
+  touching disk.
+- After an agent turn, the chat shows a **Proposed changes** block listing
+  every affected file with `+added / −removed` counts and an **Open Diff**
+  button each, plus **Apply All** / **Discard** buttons.
+- **Open Diff** shows VS Code's native red/green diff editor (proposed vs
+  current) via a `TextDocumentContentProvider` (`bosch-copilot-proposed:`
+  scheme). **Apply All** writes via `WorkspaceEdit` (full undo support) and
+  saves; **Discard** drops them. Multi-edit-to-one-file is coherent (later
+  edits build on earlier staged content).
+- New commands: `Apply Proposed Changes`, `Discard Proposed Changes`,
+  `Open Proposed Diff` (the last hidden from the palette).
+- The old per-edit chat confirmation card is replaced by this review flow.
+  `run_terminal_command` still confirms before executing.
+
+### Added — Clarifying-question tool
+- **`ask_followup_question`** — the agent can ask you a question (QuickPick
+  for options, InputBox for free text) instead of guessing, and continues
+  with your answer. 13 tools total.
+
+### Added — Live progress messages
+- The status line now shows **dynamic, phase-aware** messages
+  (`🧠 Reasoning…`, per-tool `🔍 Combing through the codebase…`,
+  `📋 Reviewing what I found…`, `🧾 Wrapping up…`) instead of a single
+  static "Thinking…". The duplicate "Thinking…" is gone.
+
+### Changed — Agent-loop robustness
+- **Forced final answer:** when the loop hits the iteration cap *or* the
+  model returns an empty turn, the agent makes one final no-tools call so
+  you always get a real answer — never the old "stopped, 0 chars" silence.
+- **Duplicate-call guard:** an identical (tool + arguments) call is no
+  longer re-executed; the prior result is reused with a nudge to proceed.
+- **System prompt overhaul** for cross-file flow tracing — explicit
+  LOCATE → UNDERSTAND → TRACE → EDIT workflow, "don't assume", and an
+  Angular-specific note (component → shared service → all consumers).
+- Default `agent.maxIterations` raised **5 → 10** (max 20 → 30) to fit
+  multi-file tasks; the forced-final-answer makes the cap safe.
+
 ## [0.5.0] - 2026-05-29
 
 ### Added — Multi-provider model support (Bosch Model Farm)

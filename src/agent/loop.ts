@@ -4,6 +4,12 @@ import type { ChatClient } from '../model/chatClient';
 import { ToolsNotSupportedError } from '../model/completionClient';
 import type { ChatMessage, OpenAITool, ToolCall } from '../model/types';
 import type { ToolDescriptor } from './types';
+import {
+  reasoningMessage,
+  reviewingMessage,
+  toolMessage,
+  FINALISING,
+} from './progressMessages';
 
 export interface AgentLoopOptions {
   /** Used to surface tool calls + the final answer in the chat UI. */
@@ -29,14 +35,17 @@ export interface AgentLoopResult {
 }
 
 /**
- * ReAct loop. Runs non-streaming chat completions in a loop, invoking
- * tools when the model requests them via `tool_calls`, until the model
- * returns a final answer without tool calls (or `maxIterations` is hit).
+ * ReAct loop. Runs non-streaming chat completions in a loop, invoking tools
+ * when the model requests them, until the model produces a final answer
+ * without tool calls (or `maxIterations` is hit).
  *
- * Why non-streaming: streaming with tools requires assembling partial
- * `tool_calls` deltas across chunks; the loop UX is already incremental
- * because each tool call renders as soon as it starts. We can layer
- * proper streaming for the final answer in a Phase 4 polish pass.
+ * Hardening:
+ *  - **Duplicate-call guard:** an identical (name + args) tool call is not
+ *    re-executed; the prior result is returned with a nudge to use it.
+ *  - **Forced final answer:** when the loop ends without a textual answer
+ *    (cap hit, or an empty assistant turn) it makes one final no-tools call
+ *    so the user always gets a response — never silence.
+ *  - **Live progress:** the status line shows phase/tool-specific messages.
  */
 export class AgentLoop {
   constructor(
@@ -55,20 +64,36 @@ export class AgentLoop {
     let toolCalls = 0;
     let totalChars = 0;
     let firstActivityMs = -1;
+    let reviewCounter = 0;
+
+    const markActivity = (): void => {
+      if (firstActivityMs < 0) {
+        firstActivityMs = Date.now() - started;
+      }
+    };
 
     const openAITools = this.toOpenAITools();
     const byLlmName = new Map<string, ToolDescriptor>(
       this.tools.map((t) => [t.llmName, t])
     );
+    // Cache of executed tool-call signature -> result content, for dedup.
+    const resultCache = new Map<string, string>();
 
-    options.stream.progress('Thinking…');
+    const finish = (): AgentLoopResult => ({
+      iterations,
+      toolCalls,
+      totalChars,
+      elapsedMs: Date.now() - started,
+      firstActivityMs: firstActivityMs < 0 ? 0 : firstActivityMs,
+    });
 
     while (iterations < options.maxIterations) {
       iterations++;
       if (token.isCancellationRequested) {
-        break;
+        return finish();
       }
 
+      options.stream.progress(reasoningMessage(iterations));
       this.logger.debug(
         `agent: iteration ${iterations}/${options.maxIterations}`
       );
@@ -81,114 +106,144 @@ export class AgentLoop {
         });
       } catch (err) {
         if (err instanceof ToolsNotSupportedError) {
-          // Model doesn't support native tool calling — fall back to
-          // streaming without tools so the user sees tokens immediately.
           this.logger.warn(
             `agent: model '${err.modelName}' does not support tools, ` +
               `falling back to streaming chat`
           );
           options.stream.markdown(
             `> ⚠️ Model \`${err.modelName}\` does not support tool calling. ` +
-              `Answering without tools — consider switching \`bosch-copilot.chatModel\` ` +
-              `to an instruct/chat model (e.g. \`qwen2.5-coder:7b\`).\n\n`
+              `Answering without tools.\n\n`
           );
-          for await (const chunk of this.chatClient.stream(messages, token)) {
-            if (token.isCancellationRequested) {
-              break;
-            }
-            if (chunk.delta) {
-              options.stream.markdown(chunk.delta);
-              totalChars += chunk.delta.length;
-            }
-            if (chunk.done) {
-              break;
-            }
-          }
-          return {
-            iterations,
-            toolCalls,
-            totalChars,
-            elapsedMs: Date.now() - started,
-            firstActivityMs: Date.now() - started,
-          };
+          totalChars += await this.streamPlain(messages, options, token, markActivity);
+          return finish();
         }
         throw err;
       }
 
-      // Always append the assistant's reply (tool_calls or content) so
-      // the next loop iteration has the full conversation.
       messages.push(result.message);
 
-      // Case 1: model produced a final answer (no tool calls).
-      if (
-        !result.message.tool_calls ||
-        result.message.tool_calls.length === 0
-      ) {
+      const calls = result.message.tool_calls ?? [];
+
+      // Case 1: final answer (no tool calls).
+      if (calls.length === 0) {
         const content = result.message.content;
         if (content.length > 0) {
-          if (firstActivityMs < 0) {
-            firstActivityMs = Date.now() - started;
-          }
+          markActivity();
           options.stream.markdown(content);
           totalChars += content.length;
-        } else {
-          // Empty response with no tool calls — model returned nothing useful.
-          this.logger.warn(
-            `agent: model returned empty content with no tool calls ` +
-              `(iteration ${iterations}, finish_reason=${result.finishReason})`
+          this.logger.info(
+            `agent: done — ${iterations} iteration(s), ${toolCalls} tool call(s), ` +
+              `${totalChars} chars in ${Date.now() - started}ms`
           );
-          options.stream.markdown(
-            '⚠️ The model returned an empty response. This may indicate the model is overloaded, ' +
-              'still loading, or does not support tool calling properly. ' +
-              'Try again, or switch to a different model.\n'
-          );
+          return finish();
         }
-        this.logger.info(
-          `agent: done — ${iterations} iteration(s), ${toolCalls} tool call(s), ` +
-            `${totalChars} chars in ${Date.now() - started}ms`
+        // Empty answer with no tools — force a proper final answer.
+        this.logger.warn(
+          `agent: empty assistant turn (iter ${iterations}, ` +
+            `finish_reason=${result.finishReason}) — forcing final answer`
         );
-        return {
-          iterations,
-          toolCalls,
-          totalChars,
-          elapsedMs: Date.now() - started,
-          firstActivityMs: firstActivityMs < 0 ? 0 : firstActivityMs,
-        };
+        totalChars += await this.forceFinalAnswer(messages, options, token, markActivity);
+        return finish();
       }
 
-      // Case 2: model requested tool calls. Execute them in order.
-      for (const tc of result.message.tool_calls) {
+      // Case 2: execute the requested tool calls (with dedup).
+      for (const tc of calls) {
         if (token.isCancellationRequested) {
-          break;
+          return finish();
         }
         toolCalls++;
-        if (firstActivityMs < 0) {
-          firstActivityMs = Date.now() - started;
-        }
-        await this.invokeOneToolCall(tc, byLlmName, messages, options, token);
+        markActivity();
+        await this.invokeOneToolCall(
+          tc,
+          byLlmName,
+          messages,
+          options,
+          token,
+          resultCache
+        );
       }
-      // Loop continues — next iteration sends the tool results back to the model.
+
+      reviewCounter++;
+      options.stream.progress(reviewingMessage(reviewCounter));
     }
 
-    // Hit the iteration cap.
-    options.stream.markdown(
-      `\n\n> ⚠️ **Stopped after ${options.maxIterations} agent iteration(s).** ` +
-        `Raise \`bosch-copilot.agent.maxIterations\` if you need longer chains, or ` +
-        `simplify the request.\n`
-    );
+    // Hit the iteration cap — force a final answer instead of going silent.
     this.logger.warn(
-      `agent: stopped at maxIterations=${options.maxIterations} (${toolCalls} tool calls so far)`
+      `agent: reached maxIterations=${options.maxIterations} ` +
+        `(${toolCalls} tool calls) — forcing final answer`
     );
-    return {
-      iterations,
-      toolCalls,
-      totalChars,
-      elapsedMs: Date.now() - started,
-      firstActivityMs: firstActivityMs < 0 ? 0 : firstActivityMs,
-    };
+    options.stream.markdown(
+      `\n\n> ℹ️ Reached the ${options.maxIterations}-step limit; ` +
+        `summarising with what I have so far.\n\n`
+    );
+    totalChars += await this.forceFinalAnswer(messages, options, token, markActivity);
+    return finish();
   }
 
   // ---------------------------------------------------------------------
+
+  /**
+   * Make one final model call with **no tools** and stream the answer, so
+   * the user always gets a textual response. Used at the iteration cap and
+   * when the model returns an empty turn.
+   */
+  private async forceFinalAnswer(
+    messages: ChatMessage[],
+    options: AgentLoopOptions,
+    token: vscode.CancellationToken,
+    markActivity: () => void
+  ): Promise<number> {
+    if (token.isCancellationRequested) {
+      return 0;
+    }
+    options.stream.progress(FINALISING);
+    messages.push({
+      role: 'user',
+      content:
+        'Stop using tools now. Using everything you have gathered so far, ' +
+        'give your best, concrete final answer to my original request. If you ' +
+        'proposed file edits, summarise them and remind me to review the diff.',
+    });
+    return this.streamPlain(messages, options, token, markActivity);
+  }
+
+  /** Stream a plain (no-tools) completion into the chat. Returns char count. */
+  private async streamPlain(
+    messages: ChatMessage[],
+    options: AgentLoopOptions,
+    token: vscode.CancellationToken,
+    markActivity: () => void
+  ): Promise<number> {
+    let chars = 0;
+    try {
+      for await (const chunk of this.chatClient.stream(messages, token)) {
+        if (token.isCancellationRequested) {
+          break;
+        }
+        if (chunk.delta) {
+          markActivity();
+          options.stream.markdown(chunk.delta);
+          chars += chunk.delta.length;
+        }
+        if (chunk.done) {
+          break;
+        }
+      }
+    } catch (err) {
+      this.logger.error('agent: forced final answer failed', err);
+      options.stream.markdown(
+        '\n\n⚠️ I gathered the information but failed to compose a final ' +
+          'answer. Please try again.\n'
+      );
+    }
+    if (chars === 0 && !token.isCancellationRequested) {
+      options.stream.markdown(
+        '\n\n⚠️ The model returned an empty final answer. Try rephrasing, or ' +
+          'run **Bosch-CoPilot: Diagnose**.\n'
+      );
+    }
+    return chars;
+  }
 
   private toOpenAITools(): OpenAITool[] {
     return this.tools.map((t) => ({
@@ -203,19 +258,42 @@ export class AgentLoop {
 
   /**
    * Look up, invoke, and record the result of a single tool call. Always
-   * appends a `role: 'tool'` message — even on failure — so the model can
-   * see what went wrong and recover on the next iteration.
+   * appends a `role: 'tool'` message — even on failure / dedup — so the
+   * conversation stays valid (every tool_call needs a matching result).
    */
   private async invokeOneToolCall(
     tc: ToolCall,
     byLlmName: Map<string, ToolDescriptor>,
     messages: ChatMessage[],
     options: AgentLoopOptions,
-    token: vscode.CancellationToken
+    token: vscode.CancellationToken,
+    resultCache: Map<string, string>
   ): Promise<void> {
     const name = tc.function.name;
     const desc = byLlmName.get(name);
+    const signature = signatureOf(tc);
 
+    // Duplicate-call guard: same tool + same args as a prior call this turn.
+    const cached = resultCache.get(signature);
+    if (cached !== undefined) {
+      options.stream.markdown(
+        `\n\n↩️ **\`${name}\`** (skipped — already ran with the same arguments)\n`
+      );
+      this.logger.debug(`agent: dedup '${name}' (${signature.slice(0, 80)})`);
+      messages.push({
+        role: 'tool',
+        tool_call_id: tc.id,
+        name,
+        content:
+          `(You already called ${name} with these exact arguments earlier. ` +
+          `Re-using that result — do not call it again. If you have enough ` +
+          `information now, give your final answer.)\n\n` +
+          cached,
+      });
+      return;
+    }
+
+    options.stream.progress(toolMessage(name));
     options.stream.markdown(
       `\n\n🔧 **\`${name}\`** ${formatArgsPreview(tc.function.arguments)}\n\n`
     );
@@ -223,12 +301,7 @@ export class AgentLoop {
     if (!desc) {
       const msg = `Unknown tool: '${name}'.`;
       options.stream.markdown(`❌ ${msg}\n`);
-      messages.push({
-        role: 'tool',
-        tool_call_id: tc.id,
-        name,
-        content: msg,
-      });
+      messages.push({ role: 'tool', tool_call_id: tc.id, name, content: msg });
       return;
     }
 
@@ -237,11 +310,7 @@ export class AgentLoop {
       const parsed = tc.function.arguments
         ? JSON.parse(tc.function.arguments)
         : {};
-      if (
-        typeof parsed !== 'object' ||
-        parsed === null ||
-        Array.isArray(parsed)
-      ) {
+      if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
         throw new Error(
           'tool arguments must be a JSON object, not an array or primitive'
         );
@@ -250,39 +319,25 @@ export class AgentLoop {
     } catch (e) {
       const msg = `Invalid arguments: ${(e as Error).message}`;
       options.stream.markdown(`❌ ${msg}\n`);
-      messages.push({
-        role: 'tool',
-        tool_call_id: tc.id,
-        name,
-        content: msg,
-      });
+      messages.push({ role: 'tool', tool_call_id: tc.id, name, content: msg });
       return;
     }
 
     try {
       const result = await vscode.lm.invokeTool(
         desc.vsCodeName,
-        {
-          input,
-          toolInvocationToken: options.toolInvocationToken,
-        },
+        { input, toolInvocationToken: options.toolInvocationToken },
         token
       );
       const content = serializeToolResult(result);
       options.stream.markdown(
         `✅ \`${name}\` → ${content.length} char${content.length === 1 ? '' : 's'}\n`
       );
-      messages.push({
-        role: 'tool',
-        tool_call_id: tc.id,
-        name,
-        content,
-      });
+      resultCache.set(signature, content);
+      messages.push({ role: 'tool', tool_call_id: tc.id, name, content });
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      options.stream.markdown(
-        `❌ \`${name}\` failed: ${escapeBackticks(msg)}\n`
-      );
+      options.stream.markdown(`❌ \`${name}\` failed: ${escapeBackticks(msg)}\n`);
       this.logger.warn(`agent: tool '${name}' failed`, err);
       messages.push({
         role: 'tool',
@@ -296,13 +351,37 @@ export class AgentLoop {
 
 // ---------------------------------------------------------------------------
 
+/** Stable signature for a tool call: name + args with sorted keys. */
+function signatureOf(tc: ToolCall): string {
+  let argPart = tc.function.arguments ?? '';
+  try {
+    argPart = JSON.stringify(sortKeys(JSON.parse(argPart)));
+  } catch {
+    /* keep raw */
+  }
+  return `${tc.function.name}::${argPart}`;
+}
+
+function sortKeys(value: unknown): unknown {
+  if (Array.isArray(value)) {
+    return value.map(sortKeys);
+  }
+  if (value && typeof value === 'object') {
+    const out: Record<string, unknown> = {};
+    for (const k of Object.keys(value as Record<string, unknown>).sort()) {
+      out[k] = sortKeys((value as Record<string, unknown>)[k]);
+    }
+    return out;
+  }
+  return value;
+}
+
 function serializeToolResult(result: vscode.LanguageModelToolResult): string {
   const parts: string[] = [];
   for (const c of result.content) {
     if (c instanceof vscode.LanguageModelTextPart) {
       parts.push(c.value);
     } else {
-      // PromptTsxPart or future part types — fall back to JSON.
       try {
         parts.push(JSON.stringify(c));
       } catch {
@@ -317,7 +396,6 @@ function formatArgsPreview(jsonArgs: string): string {
   if (!jsonArgs) {
     return '`()`';
   }
-  // Try to render a short, single-line inline preview.
   try {
     const parsed = JSON.parse(jsonArgs);
     const compact = JSON.stringify(parsed);

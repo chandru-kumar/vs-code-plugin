@@ -5,7 +5,7 @@
 > endpoint. Inline completions, full chat sidebar, agentic tool-calling,
 > and native Model Context Protocol (MCP) support.
 
-**Status:** Phase 4 of 8 — agentic mode with ReAct loop + **12 local tools** (read/range/list/find-files/grep + code-flow analysis via find-symbol/outline/references/definition + write/diff/terminal), multi-provider model support (Azure OpenAI / Anthropic-Vertex / Vertex-OpenAI / generic OpenAI), plus everything from Phases 1–3.
+**Status:** Phase 4 of 8 — agentic mode with ReAct loop + **13 local tools** (read/range/list/find-files/grep + code-flow analysis via find-symbol/outline/references/definition + write/diff/terminal + ask-followup), **reviewable staged edits** (native red/green diff + Apply/Discard), live progress messages, multi-provider model support (Azure OpenAI / Anthropic-Vertex / Vertex-OpenAI / generic OpenAI), plus everything from Phases 1–3.
 
 ---
 
@@ -479,6 +479,65 @@ channel logs** (at `debug`) — especially the `Registered 12 tool(s)` line, the
 | Confirmation card doesn't appear before a write | Only renders when invoked via the agent loop (`toolInvocationToken`). Ensure VS Code 1.95+ and that the agent is enabled. |
 | Tool throws "No workspace open" | Open a folder first (`File → Open Folder…`). |
 | Agent loops repeating the same tool | Lower `bosch-copilot.agent.maxIterations`; rephrase; the model may be confused by ambiguous file paths. |
+
+---
+
+## ✨ Phase 4 polish — reviewable edits, live progress, smarter agent (v0.6.0)
+
+Three upgrades to the agentic experience:
+
+1. **Live progress messages** — the status line now changes as the agent
+   works: `🧠 Reasoning…` → per-tool `🔍 Combing through the codebase…` /
+   `🔗 Tracing every usage…` → `📋 Reviewing what I found…` → `🧾 Wrapping
+   up…`. (The old duplicated, static "Thinking…" is gone.)
+
+2. **Reviewable staged edits (diff tab + Apply/Discard)** — `write_file` and
+   `apply_diff` no longer write immediately. The agent **stages** changes;
+   at the end of the turn the chat shows a **Proposed changes** block:
+   - every changed file with `+added / −removed`,
+   - an **Open Diff** button per file → VS Code's native **red/green diff**,
+   - **Apply All** (writes via `WorkspaceEdit`, full undo) and **Discard**.
+   Nothing touches disk until you click Apply.
+
+3. **Smarter agent** — `ask_followup_question` tool (the agent asks instead
+   of guessing), a system prompt that traces **cross-file flow** (Angular:
+   component → shared service → all consumers), a **duplicate-call guard**,
+   and a **forced final answer** so you never get the old "did 5 tool calls,
+   returned nothing" outcome. Default `maxIterations` raised to 10.
+
+### Test plan (Windows) — Phase 4 polish
+
+Agent mode must be on: `bosch-copilot.agent.enabled` = `true`. Open a real
+project (your Angular app is ideal). `logLevel` = `debug`.
+
+| #  | Action                                                                                              | Expected                                                                                          |
+| -- | --------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------- |
+| 1  | `git fetch && git checkout feature/agent-ux-polish && git pull && npm install && npm run compile`   | Clean build                                                                                        |
+| 2  | F5 → Output shows `Registered 13 tool(s): … ask_followup_question`                                  | New tool present                                                                                   |
+| 3  | Ask a question that needs tools; watch the **status line** under the input                          | It changes through phases (🧠 / per-tool / 📋), not a static frozen "Thinking…"; appears **once**   |
+| 4  | `@bosch-copilot in <some component> rename the field X to Y`                                          | Agent uses find_symbol/find_references/read_file_range, then **stages** an apply_diff               |
+| 5  | After it finishes, you see a **📝 Proposed changes** block listing the file(s) with +/- counts       | Each file has an **Open Diff** button; **Apply All** + **Discard** below                            |
+| 6  | Click **Open Diff** for a file                                                                       | VS Code's native diff opens — added lines **green**, removed **red**. Nothing written yet           |
+| 7  | Click **Apply All**                                                                                 | Toast "applied N file change(s)"; files now changed on disk (and saved)                            |
+| 8  | Repeat an edit, click **Discard**                                                                   | Toast "discarded N"; no file changed                                                                |
+| 9  | **Multi-file flow:** "In `<service>` the value `foo` changed — update every component that uses it" | Agent traces references across files and stages edits to **multiple** files in one Proposed block   |
+| 10 | Ask something ambiguous, e.g. "fix the reset bug" with several candidates                            | Agent calls `ask_followup_question` → a QuickPick/InputBox pops; your answer steers it              |
+| 11 | Force the cap: set `maxIterations` = `2`, ask a 3-step task                                          | After the cap it still **prints a final answer** (forced), not "stopped, 0 chars"                  |
+| 12 | Check Output after a turn                                                                            | `chat (agent): … staged=N …`; `tool:apply_diff` logs `Staged …`; any dedup logs `agent: dedup …`    |
+
+If 1–9 pass, the polish milestone is verified. **Send the Output logs** —
+especially `staged=N`, the `tool:apply_diff ✓` lines, and any
+`agent: dedup` / forced-final-answer lines.
+
+### Phase 4 polish troubleshooting
+
+| Symptom | Fix |
+| --- | --- |
+| No "Proposed changes" block after an edit request | The model answered without calling an edit tool (it may have only *described* the change). Ask explicitly: "apply the change to the file". Check Output for `tool:apply_diff`. |
+| "Open Diff" says the change is no longer available | You started a new chat turn (which clears the previous turn's staged edits). Re-run the request. |
+| Apply All did nothing | Check Output for `editManager: failed to apply` — usually the file moved/was deleted. |
+| `ask_followup_question` popup didn't appear | It uses VS Code's QuickPick/InputBox at the top-center; if you dismissed it, the agent proceeds with an assumption (and says so). |
+| Edits applied immediately without review | You invoked the tool via `#write_file` **outside** an agent turn — the direct-write fallback ran. Use it inside `@bosch-copilot` agent mode for staging. |
 
 ---
 

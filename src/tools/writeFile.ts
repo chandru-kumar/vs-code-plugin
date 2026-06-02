@@ -1,6 +1,8 @@
 import * as vscode from 'vscode';
+import type { Logger } from '../utils/logger';
 import type { ToolDefinition } from '../agent/types';
 import { resolveWorkspacePath, textResult } from './util';
+import { getEditManager } from '../agent/editManager';
 
 interface WriteFileInput {
   path: string;
@@ -10,41 +12,44 @@ interface WriteFileInput {
 }
 
 class WriteFileTool implements vscode.LanguageModelTool<WriteFileInput> {
+  constructor(private readonly logger: Logger) {}
+
   async invoke(
     options: vscode.LanguageModelToolInvocationOptions<WriteFileInput>,
     _token: vscode.CancellationToken
   ): Promise<vscode.LanguageModelToolResult> {
     const { path: rel, content, createOnly } = options.input;
     const uri = resolveWorkspacePath(rel);
+    const manager = getEditManager();
 
-    if (createOnly) {
-      try {
-        await vscode.workspace.fs.stat(uri);
-        throw new Error(`write_file: file already exists: ${rel}`);
-      } catch (err) {
-        if ((err as { code?: string }).code !== 'FileNotFound') {
-          // stat threw for non-not-found reasons OR our "already exists" — rethrow.
-          if (
-            err instanceof Error &&
-            err.message.startsWith('write_file:')
-          ) {
-            throw err;
-          }
-          // Otherwise: file does not exist → fall through to write.
-        }
-      }
+    if (createOnly && (await fileExists(uri))) {
+      throw new Error(`write_file: file already exists: ${rel}`);
     }
 
-    // Ensure parent directory exists.
+    // Preferred path: STAGE the change for the user to review as a diff.
+    if (manager) {
+      const edit = await manager.stageCreate(uri, content);
+      this.logger.debug(`write_file: staged ${rel} (${content.length} chars)`);
+      return textResult(
+        `Staged ${edit.kind === 'create' ? 'new file' : 'overwrite'} ` +
+          `'${rel}' (${content.length} chars, +${edit.added}/-${edit.removed}). ` +
+          `It will be shown to the user as a reviewable diff — do NOT assume ` +
+          `it is applied yet.`
+      );
+    }
+
+    // Fallback (e.g. invoked via #write_file outside an agent turn):
+    // write directly to disk.
     const parent = vscode.Uri.joinPath(uri, '..');
     try {
       await vscode.workspace.fs.createDirectory(parent);
     } catch {
-      // already exists or workspace fs handled it
+      /* already exists */
     }
-
-    const bytes = new TextEncoder().encode(content);
-    await vscode.workspace.fs.writeFile(uri, bytes);
+    await vscode.workspace.fs.writeFile(
+      uri,
+      new TextEncoder().encode(content)
+    );
     return textResult(`Wrote ${content.length} chars to ${rel}.`);
   }
 
@@ -52,21 +57,19 @@ class WriteFileTool implements vscode.LanguageModelTool<WriteFileInput> {
     options: vscode.LanguageModelToolInvocationPrepareOptions<WriteFileInput>,
     _token: vscode.CancellationToken
   ): Promise<vscode.PreparedToolInvocation> {
-    const { path: rel, content, createOnly } = options.input;
-    const preview = content.length > 800 ? content.slice(0, 800) + '\n…' : content;
+    // No confirmation card: edits are staged and reviewed as a diff.
     return {
-      invocationMessage: `Writing \`${rel}\``,
-      confirmationMessages: {
-        title: createOnly ? 'Create file?' : 'Write file?',
-        message: new vscode.MarkdownString(
-          `${createOnly ? '**Create**' : '**Write**'} ` +
-            `\`${rel}\` (${content.length} chars).\n\n` +
-            '```\n' +
-            preview +
-            '\n```'
-        ),
-      },
+      invocationMessage: `Staging write to \`${options.input.path}\``,
     };
+  }
+}
+
+async function fileExists(uri: vscode.Uri): Promise<boolean> {
+  try {
+    await vscode.workspace.fs.stat(uri);
+    return true;
+  } catch {
+    return false;
   }
 }
 
@@ -75,10 +78,10 @@ export const writeFileTool: ToolDefinition<WriteFileInput> = {
     llmName: 'write_file',
     vsCodeName: 'bosch_copilot_write_file',
     description:
-      'Write text content to a workspace-relative file. Overwrites by default; ' +
-      'set `createOnly: true` to fail if the file already exists. ' +
-      'Always asks the user for confirmation before writing. ' +
-      'Creates parent directories as needed.',
+      'Create or overwrite a workspace file with full content. The change is ' +
+      'STAGED (not written immediately) and shown to the user as a reviewable ' +
+      'red/green diff to Apply or Discard. Set `createOnly: true` to fail if the ' +
+      'file already exists. Use apply_diff instead for small edits to existing files.',
     parameters: {
       type: 'object',
       properties: {
@@ -99,5 +102,5 @@ export const writeFileTool: ToolDefinition<WriteFileInput> = {
     },
     destructive: true,
   },
-  factory: () => new WriteFileTool(),
+  factory: (logger) => new WriteFileTool(logger),
 };

@@ -11,6 +11,7 @@ import { BoschCopilotInlineProvider } from './completions/inlineProvider';
 import { runDiagnose } from './commands/diagnose';
 import { prewarmCompletionModel } from './model/warmup';
 import { registerAllTools } from './tools';
+import { EditManager, setEditManager } from './agent/editManager';
 
 let logger: Logger | undefined;
 
@@ -28,6 +29,11 @@ export async function activate(
     chatModel: settings.chatModel,
     completionModel: settings.completionModel,
   });
+
+  // --- Phase 4: edit staging (diff-review) manager -----------------------
+  const editManager = new EditManager(logger);
+  setEditManager(editManager);
+  context.subscriptions.push(editManager);
 
   // --- Phase 4: register tools (must happen before chat participant
   //              so the agent loop has the descriptors) ------------------
@@ -101,6 +107,46 @@ export async function activate(
         );
         void vscode.window.showInformationMessage(
           `Bosch-CoPilot inline completions ${!current ? 'enabled' : 'disabled'}.`
+        );
+      }
+    ),
+    // --- Phase 4: staged-edit review commands ---------------------------
+    vscode.commands.registerCommand(
+      'bosch-copilot.openProposedDiff',
+      async (id?: string) => {
+        if (!id) {
+          return;
+        }
+        await editManager.openDiff(id);
+      }
+    ),
+    vscode.commands.registerCommand(
+      'bosch-copilot.applyPendingEdits',
+      async () => {
+        const { applied, failed } = await editManager.applyAll();
+        if (applied > 0 && failed === 0) {
+          void vscode.window.showInformationMessage(
+            `Bosch-CoPilot: applied ${applied} file change${applied === 1 ? '' : 's'}.`
+          );
+        } else if (applied > 0 && failed > 0) {
+          void vscode.window.showWarningMessage(
+            `Bosch-CoPilot: applied ${applied}, but ${failed} failed (see Output).`
+          );
+        } else if (failed > 0) {
+          void vscode.window.showErrorMessage(
+            `Bosch-CoPilot: failed to apply ${failed} change${failed === 1 ? '' : 's'} (see Output).`
+          );
+        }
+      }
+    ),
+    vscode.commands.registerCommand(
+      'bosch-copilot.discardPendingEdits',
+      () => {
+        const n = editManager.discardAll();
+        void vscode.window.showInformationMessage(
+          n > 0
+            ? `Bosch-CoPilot: discarded ${n} proposed change${n === 1 ? '' : 's'}.`
+            : 'Bosch-CoPilot: no pending changes to discard.'
         );
       }
     )

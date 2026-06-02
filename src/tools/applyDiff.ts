@@ -1,6 +1,8 @@
 import * as vscode from 'vscode';
+import type { Logger } from '../utils/logger';
 import type { ToolDefinition } from '../agent/types';
 import { resolveWorkspacePath, textResult } from './util';
+import { getEditManager } from '../agent/editManager';
 
 interface ApplyDiffInput {
   path: string;
@@ -11,23 +13,35 @@ interface ApplyDiffInput {
 }
 
 class ApplyDiffTool implements vscode.LanguageModelTool<ApplyDiffInput> {
+  constructor(private readonly logger: Logger) {}
+
   async invoke(
     options: vscode.LanguageModelToolInvocationOptions<ApplyDiffInput>,
     _token: vscode.CancellationToken
   ): Promise<vscode.LanguageModelToolResult> {
     const { path: rel, oldText, newText } = options.input;
     if (oldText === newText) {
-      return textResult(`apply_diff: oldText and newText are identical — no change.`);
+      return textResult(
+        `apply_diff: oldText and newText are identical — no change.`
+      );
     }
     const uri = resolveWorkspacePath(rel);
-    const bytes = await vscode.workspace.fs.readFile(uri);
-    const original = new TextDecoder('utf-8').decode(bytes);
+    const manager = getEditManager();
+
+    // Operate on the *effective* content: if this file already has staged
+    // edits this turn, build on top of them (not the stale disk version).
+    const original = manager
+      ? await manager.getEffectiveContent(uri)
+      : new TextDecoder('utf-8').decode(
+          await vscode.workspace.fs.readFile(uri)
+        );
 
     const occurrences = countOccurrences(original, oldText);
     if (occurrences === 0) {
       throw new Error(
         `apply_diff: oldText not found in ${rel}. ` +
-          'The oldText must match EXACTLY (including whitespace and indentation).'
+          'The oldText must match EXACTLY (including whitespace and indentation). ' +
+          'Read the file first to copy the exact text.'
       );
     }
     if (occurrences > 1) {
@@ -38,6 +52,18 @@ class ApplyDiffTool implements vscode.LanguageModelTool<ApplyDiffInput> {
     }
 
     const updated = original.replace(oldText, newText);
+
+    if (manager) {
+      const edit = await manager.stageModify(uri, updated);
+      this.logger.debug(`apply_diff: staged patch to ${rel}`);
+      return textResult(
+        `Staged a patch to '${rel}' (+${edit.added}/-${edit.removed} lines). ` +
+          `It will be shown to the user as a reviewable diff — do NOT assume ` +
+          `it is applied yet. You may stage more edits to the same or other files.`
+      );
+    }
+
+    // Fallback: write directly (invoked outside an agent turn).
     await vscode.workspace.fs.writeFile(
       uri,
       new TextEncoder().encode(updated)
@@ -51,21 +77,9 @@ class ApplyDiffTool implements vscode.LanguageModelTool<ApplyDiffInput> {
     options: vscode.LanguageModelToolInvocationPrepareOptions<ApplyDiffInput>,
     _token: vscode.CancellationToken
   ): Promise<vscode.PreparedToolInvocation> {
-    const { path: rel, oldText, newText } = options.input;
-    const oldPreview = preview(oldText);
-    const newPreview = preview(newText);
+    // No confirmation card: edits are staged and reviewed as a diff.
     return {
-      invocationMessage: `Patching \`${rel}\``,
-      confirmationMessages: {
-        title: 'Apply patch?',
-        message: new vscode.MarkdownString(
-          `Patch \`${rel}\`:\n\n` +
-            `**− Remove (${oldText.length} chars):**\n` +
-            '```\n' + oldPreview + '\n```\n\n' +
-            `**+ Insert (${newText.length} chars):**\n` +
-            '```\n' + newPreview + '\n```'
-        ),
-      },
+      invocationMessage: `Staging patch to \`${options.input.path}\``,
     };
   }
 }
@@ -83,13 +97,6 @@ function countOccurrences(haystack: string, needle: string): number {
   return count;
 }
 
-function preview(text: string, max = 600): string {
-  if (text.length <= max) {
-    return text;
-  }
-  return text.slice(0, max) + '\n…';
-}
-
 export const applyDiffTool: ToolDefinition<ApplyDiffInput> = {
   descriptor: {
     llmName: 'apply_diff',
@@ -97,9 +104,10 @@ export const applyDiffTool: ToolDefinition<ApplyDiffInput> = {
     description:
       'Replace a unique exact substring in a workspace file. The `oldText` ' +
       'MUST appear exactly once in the file (provide enough surrounding ' +
-      'context to make it unique). Always asks the user for confirmation. ' +
-      'Use this instead of write_file for targeted edits — it preserves the ' +
-      'rest of the file untouched.',
+      'context to make it unique). The change is STAGED and shown to the user ' +
+      'as a reviewable red/green diff to Apply or Discard. Preferred for ' +
+      'targeted edits — it preserves the rest of the file untouched. You can ' +
+      'stage multiple edits (same or different files) before the user reviews.',
     parameters: {
       type: 'object',
       properties: {
@@ -121,5 +129,5 @@ export const applyDiffTool: ToolDefinition<ApplyDiffInput> = {
     },
     destructive: true,
   },
-  factory: () => new ApplyDiffTool(),
+  factory: (logger) => new ApplyDiffTool(logger),
 };

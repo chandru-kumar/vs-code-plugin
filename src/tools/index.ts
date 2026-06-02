@@ -13,10 +13,12 @@ import { findSymbolTool } from './findSymbol';
 import { documentOutlineTool } from './documentOutline';
 import { findReferencesTool } from './findReferences';
 import { goToDefinitionTool } from './goToDefinition';
-// Mutating tools (require confirmation)
+// Mutating tools (staged for diff review)
 import { writeFileTool } from './writeFile';
 import { applyDiffTool } from './applyDiff';
 import { runTerminalTool } from './runTerminal';
+// Interaction
+import { askFollowupTool } from './askFollowup';
 
 /** Canonical list of all Bosch-CoPilot-provided tools, in display order. */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -32,10 +34,12 @@ const ALL_TOOLS: Array<ToolDefinition<any>> = [
   documentOutlineTool,
   findReferencesTool,
   goToDefinitionTool,
-  // mutate (confirmation-gated)
+  // mutate (staged for diff review)
   writeFileTool,
   applyDiffTool,
   runTerminalTool,
+  // interaction
+  askFollowupTool,
 ];
 
 /**

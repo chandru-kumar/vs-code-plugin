@@ -118,7 +118,7 @@ export function readSettings(): BoschCopilotSettings {
     completionCount: clamp(cfg.get<number>('completionCount', 1), 1, 3),
     prewarmOnActivation: cfg.get<boolean>('prewarmOnActivation', true),
     agentEnabled: cfg.get<boolean>('agent.enabled', true),
-    agentMaxIterations: clamp(cfg.get<number>('agent.maxIterations', 5), 1, 20),
+    agentMaxIterations: clamp(cfg.get<number>('agent.maxIterations', 10), 1, 30),
   };
 }
 

@@ -2,7 +2,7 @@
   "name": "bosch-copilot",
   "displayName": "Bosch-CoPilot",
   "description": "AI coding assistant for VS Code powered by Bosch hosted Claude (Anthropic) and any OpenAI-compatible endpoint. Inline completions, chat, agentic mode, and full MCP support.",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "publisher": "chandru-kumar",
   "private": true,
   "license": "MIT",
@@ -97,8 +97,31 @@
         "command": "bosch-copilot.toggleInlineCompletions",
         "title": "Bosch-CoPilot: Toggle Inline Completions",
         "category": "Bosch-CoPilot"
+      },
+      {
+        "command": "bosch-copilot.applyPendingEdits",
+        "title": "Bosch-CoPilot: Apply Proposed Changes",
+        "category": "Bosch-CoPilot"
+      },
+      {
+        "command": "bosch-copilot.discardPendingEdits",
+        "title": "Bosch-CoPilot: Discard Proposed Changes",
+        "category": "Bosch-CoPilot"
+      },
+      {
+        "command": "bosch-copilot.openProposedDiff",
+        "title": "Bosch-CoPilot: Open Proposed Diff",
+        "category": "Bosch-CoPilot"
       }
     ],
+    "menus": {
+      "commandPalette": [
+        {
+          "command": "bosch-copilot.openProposedDiff",
+          "when": "false"
+        }
+      ]
+    },
     "configuration": {
       "title": "Bosch-CoPilot",
       "properties": {
@@ -289,10 +312,10 @@
         },
         "bosch-copilot.agent.maxIterations": {
           "type": "number",
-          "default": 5,
+          "default": 10,
           "minimum": 1,
-          "maximum": 20,
-          "description": "Safety cap on how many model→tool→model cycles a single chat turn may run.",
+          "maximum": 30,
+          "description": "Safety cap on how many model→tool→model cycles a single chat turn may run. When reached, the agent makes one final no-tools call so you always get an answer. Higher = handles deeper multi-file tasks at the cost of latency.",
           "order": 22
         }
       }
@@ -677,6 +700,37 @@
           },
           "required": [
             "command"
+          ]
+        }
+      },
+      {
+        "name": "bosch_copilot_ask_followup_question",
+        "displayName": "Ask Followup Question",
+        "modelDescription": "Ask the user a clarifying question when the request is ambiguous or you are missing information the other tools cannot provide. Provide options for multiple-choice, or omit for free text. Returns the user's answer.",
+        "userDescription": "Let the assistant ask you a clarifying question.",
+        "toolReferenceName": "ask_followup_question",
+        "canBeReferencedInPrompt": true,
+        "tags": [
+          "bosch-copilot",
+          "interaction"
+        ],
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "question": {
+              "type": "string",
+              "description": "The clarifying question to ask the user."
+            },
+            "options": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "description": "Optional suggested answers shown as selectable choices."
+            }
+          },
+          "required": [
+            "question"
           ]
         }
       }
