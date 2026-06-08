@@ -4,6 +4,36 @@ All notable changes to Bosch-CoPilot will be documented here. This project follo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.1] - 2026-06-03
+
+### Fixed — apply_diff reliability (the big one)
+- **Tolerant matching.** `apply_diff` no longer requires a byte-exact match.
+  It now tries: exact → **de-escaped** (strips the model's spurious `\"`/`\\`
+  over-escaping that broke nearly every HTML/Angular edit) → **whitespace /
+  line-normalized** (trailing-space + CRLF agnostic). When matching needed
+  de-escaping, `newText` is de-escaped too so no literal backslashes are
+  written.
+- **Actionable failure.** A no-match error now points at the closest lines in
+  the file ("Closest lines containing …") and tells the model to read_file
+  for exact text or switch to write_file — instead of a dead-end retry loop.
+
+### Changed — agent-loop robustness
+- **Repeated-failure guard.** An identical tool call that already failed this
+  turn is short-circuited with a strong nudge (read the file / use write_file)
+  instead of being re-run — kills the "same failing diff 16×" pattern.
+- **Consecutive-failure abort.** After 5 tool failures in a row the agent
+  stops calling tools and forces a final answer.
+- **Total tool-call budget.** Hard backstop of 40 tool calls per turn
+  (forces a final answer if exceeded) to prevent multi-minute runaways.
+- **Truncation handling.** When a model response hits the token limit
+  (`finish_reason=length`), the agent injects a note telling it to stop
+  pasting whole files into tool args and use a single write_file.
+
+### Changed — guidance
+- `apply_diff` description + system prompt now steer the model to **read
+  before diffing**, use **small** targeted diffs, and call **write_file once**
+  for large/multi-section rewrites instead of chaining many diffs.
+
 ## [0.6.0] - 2026-05-30
 
 ### Added — Reviewable edits (diff tab + Apply/Discard)

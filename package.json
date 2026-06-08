@@ -2,7 +2,7 @@
   "name": "bosch-copilot",
   "displayName": "Bosch-CoPilot",
   "description": "AI coding assistant for VS Code powered by Bosch hosted Claude (Anthropic) and any OpenAI-compatible endpoint. Inline completions, chat, agentic mode, and full MCP support.",
-  "version": "0.6.0",
+  "version": "0.6.1",
   "publisher": "chandru-kumar",
   "private": true,
   "license": "MIT",

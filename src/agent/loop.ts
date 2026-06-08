@@ -11,6 +11,11 @@ import {
   FINALISING,
 } from './progressMessages';
 
+/** Abort tool use after this many tool failures in a row. */
+const MAX_CONSECUTIVE_FAILURES = 5;
+/** Hard ceiling on total tool calls in a single turn (runaway backstop). */
+const MAX_TOTAL_TOOL_CALLS = 40;
+
 export interface AgentLoopOptions {
   /** Used to surface tool calls + the final answer in the chat UI. */
   stream: vscode.ChatResponseStream;
@@ -76,8 +81,11 @@ export class AgentLoop {
     const byLlmName = new Map<string, ToolDescriptor>(
       this.tools.map((t) => [t.llmName, t])
     );
-    // Cache of executed tool-call signature -> result content, for dedup.
+    // Caches keyed by tool-call signature: successful results (for reuse)
+    // and failures (to stop the model repeating an identical failing call).
     const resultCache = new Map<string, string>();
+    const failedCache = new Map<string, string>();
+    let consecutiveFailures = 0;
 
     const finish = (): AgentLoopResult => ({
       iterations,
@@ -146,21 +154,62 @@ export class AgentLoop {
         return finish();
       }
 
-      // Case 2: execute the requested tool calls (with dedup).
+      // Case 2: execute the requested tool calls (with dedup + failure guard).
       for (const tc of calls) {
         if (token.isCancellationRequested) {
           return finish();
         }
         toolCalls++;
         markActivity();
-        await this.invokeOneToolCall(
+        const ok = await this.invokeOneToolCall(
           tc,
           byLlmName,
           messages,
           options,
           token,
-          resultCache
+          resultCache,
+          failedCache
         );
+        consecutiveFailures = ok ? 0 : consecutiveFailures + 1;
+
+        if (consecutiveFailures >= MAX_CONSECUTIVE_FAILURES) {
+          this.logger.warn(
+            `agent: ${consecutiveFailures} consecutive tool failures — ` +
+              `aborting tool use and forcing a final answer`
+          );
+          options.stream.markdown(
+            `\n\n> ⚠️ Several tool calls failed in a row. Stopping tool use ` +
+              `and answering with what I have.\n\n`
+          );
+          totalChars += await this.forceFinalAnswer(messages, options, token, markActivity);
+          return finish();
+        }
+        if (toolCalls >= MAX_TOTAL_TOOL_CALLS) {
+          this.logger.warn(
+            `agent: hit MAX_TOTAL_TOOL_CALLS=${MAX_TOTAL_TOOL_CALLS} — forcing final answer`
+          );
+          options.stream.markdown(
+            `\n\n> ℹ️ Reached the tool-call budget for this turn; summarising.\n\n`
+          );
+          totalChars += await this.forceFinalAnswer(messages, options, token, markActivity);
+          return finish();
+        }
+      }
+
+      // If the model's response was truncated by the token limit, its tool
+      // args are often malformed — nudge it to be concise next iteration.
+      if (result.finishReason === 'length') {
+        this.logger.warn(
+          `agent: response truncated (finish_reason=length) at iter ${iterations}`
+        );
+        messages.push({
+          role: 'user',
+          content:
+            '(Your previous response was cut off at the token limit. Do NOT ' +
+            'paste large file contents inside tool arguments. For a big ' +
+            'rewrite, call write_file ONCE with the complete file; for small ' +
+            'changes use a single focused apply_diff. Keep going.)',
+        });
       }
 
       reviewCounter++;
@@ -260,6 +309,9 @@ export class AgentLoop {
    * Look up, invoke, and record the result of a single tool call. Always
    * appends a `role: 'tool'` message — even on failure / dedup — so the
    * conversation stays valid (every tool_call needs a matching result).
+   *
+   * Returns `true` if the call succeeded, `false` on any failure (used by
+   * the caller to track consecutive failures).
    */
   private async invokeOneToolCall(
     tc: ToolCall,
@@ -267,30 +319,45 @@ export class AgentLoop {
     messages: ChatMessage[],
     options: AgentLoopOptions,
     token: vscode.CancellationToken,
-    resultCache: Map<string, string>
-  ): Promise<void> {
+    resultCache: Map<string, string>,
+    failedCache: Map<string, string>
+  ): Promise<boolean> {
     const name = tc.function.name;
     const desc = byLlmName.get(name);
     const signature = signatureOf(tc);
+    const pushTool = (content: string): void => {
+      messages.push({ role: 'tool', tool_call_id: tc.id, name, content });
+    };
 
-    // Duplicate-call guard: same tool + same args as a prior call this turn.
+    // Duplicate-success guard: same tool + args as a prior successful call.
     const cached = resultCache.get(signature);
     if (cached !== undefined) {
       options.stream.markdown(
         `\n\n↩️ **\`${name}\`** (skipped — already ran with the same arguments)\n`
       );
       this.logger.debug(`agent: dedup '${name}' (${signature.slice(0, 80)})`);
-      messages.push({
-        role: 'tool',
-        tool_call_id: tc.id,
-        name,
-        content:
-          `(You already called ${name} with these exact arguments earlier. ` +
+      pushTool(
+        `(You already called ${name} with these exact arguments earlier. ` +
           `Re-using that result — do not call it again. If you have enough ` +
           `information now, give your final answer.)\n\n` +
-          cached,
-      });
-      return;
+          cached
+      );
+      return true;
+    }
+
+    // Repeated-failure guard: identical call already failed this turn.
+    const priorFail = failedCache.get(signature);
+    if (priorFail !== undefined) {
+      options.stream.markdown(
+        `\n\n↩️ **\`${name}\`** (skipped — this exact call already failed)\n`
+      );
+      this.logger.debug(`agent: skip repeat-failed '${name}'`);
+      pushTool(
+        `(You already tried this EXACT ${name} call and it failed with: ` +
+          `${priorFail}\nDo NOT repeat it. Instead: call read_file to get the ` +
+          `current exact text, OR use write_file with the full corrected file.)`
+      );
+      return false;
     }
 
     options.stream.progress(toolMessage(name));
@@ -301,8 +368,8 @@ export class AgentLoop {
     if (!desc) {
       const msg = `Unknown tool: '${name}'.`;
       options.stream.markdown(`❌ ${msg}\n`);
-      messages.push({ role: 'tool', tool_call_id: tc.id, name, content: msg });
-      return;
+      pushTool(msg);
+      return false;
     }
 
     let input: object;
@@ -319,8 +386,9 @@ export class AgentLoop {
     } catch (e) {
       const msg = `Invalid arguments: ${(e as Error).message}`;
       options.stream.markdown(`❌ ${msg}\n`);
-      messages.push({ role: 'tool', tool_call_id: tc.id, name, content: msg });
-      return;
+      failedCache.set(signature, msg);
+      pushTool(msg);
+      return false;
     }
 
     try {
@@ -334,17 +402,15 @@ export class AgentLoop {
         `✅ \`${name}\` → ${content.length} char${content.length === 1 ? '' : 's'}\n`
       );
       resultCache.set(signature, content);
-      messages.push({ role: 'tool', tool_call_id: tc.id, name, content });
+      pushTool(content);
+      return true;
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       options.stream.markdown(`❌ \`${name}\` failed: ${escapeBackticks(msg)}\n`);
       this.logger.warn(`agent: tool '${name}' failed`, err);
-      messages.push({
-        role: 'tool',
-        tool_call_id: tc.id,
-        name,
-        content: `Error: ${msg}`,
-      });
+      failedCache.set(signature, msg);
+      pushTool(`Error: ${msg}`);
+      return false;
     }
   }
 }
