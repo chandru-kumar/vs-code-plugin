@@ -283,14 +283,12 @@ export const applyDiffTool: ToolDefinition<ApplyDiffInput> = {
     llmName: 'apply_diff',
     vsCodeName: 'bosch_copilot_apply_diff',
     description:
-      'Replace a unique substring in a workspace file (matching is tolerant of ' +
-      'whitespace and quote-escaping, but copy text verbatim from read_file ' +
-      'when possible). `oldText` must identify ONE location — include enough ' +
-      'surrounding lines to be unique. The change is STAGED and shown as a ' +
-      'reviewable red/green diff. Best for SMALL, targeted edits. ' +
-      'For a LARGE or multi-section rewrite of a file, do NOT chain many ' +
-      'apply_diff calls — call write_file ONCE with the complete new content ' +
-      'instead (more reliable). You may stage multiple edits before review.',
+      'Replace a unique substring in a file by EXACT text (matching tolerates ' +
+      'whitespace/quote-escaping). `oldText` must identify ONE location. Good ' +
+      'for a tiny, obviously-unique change. For anything multi-line, prefer ' +
+      'replace_lines (by line number) — it is more reliable than exact-text ' +
+      'matching. The change is STAGED as a reviewable diff. You may stage ' +
+      'several edits before the user reviews.',
     parameters: {
       type: 'object',
       properties: {

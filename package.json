@@ -2,7 +2,7 @@
   "name": "bosch-copilot",
   "displayName": "Bosch-CoPilot",
   "description": "AI coding assistant for VS Code powered by Bosch hosted Claude (Anthropic) and any OpenAI-compatible endpoint. Inline completions, chat, agentic mode, and full MCP support.",
-  "version": "0.6.1",
+  "version": "0.6.2",
   "publisher": "chandru-kumar",
   "private": true,
   "license": "MIT",
@@ -599,10 +599,51 @@
         }
       },
       {
+        "name": "bosch_copilot_replace_lines",
+        "displayName": "Replace Lines",
+        "modelDescription": "Replace an inclusive 1-based line range [startLine..endLine] of a file with newText. The most reliable code editor: edits exactly those lines (no text matching) and preserves the rest. Read the file first to get line numbers. Staged for diff review.",
+        "userDescription": "Edit a file by line range (staged for review).",
+        "toolReferenceName": "replace_lines",
+        "canBeReferencedInPrompt": true,
+        "tags": [
+          "bosch-copilot",
+          "workspace",
+          "write",
+          "destructive"
+        ],
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "path": {
+              "type": "string",
+              "description": "Workspace-relative file path."
+            },
+            "startLine": {
+              "type": "number",
+              "description": "First line to replace (1-based, inclusive)."
+            },
+            "endLine": {
+              "type": "number",
+              "description": "Last line to replace (1-based, inclusive)."
+            },
+            "newText": {
+              "type": "string",
+              "description": "New text for those lines (empty string deletes the range)."
+            }
+          },
+          "required": [
+            "path",
+            "startLine",
+            "endLine",
+            "newText"
+          ]
+        }
+      },
+      {
         "name": "bosch_copilot_write_file",
         "displayName": "Write File",
-        "modelDescription": "Write text content to a workspace-relative file. Overwrites by default; set createOnly:true to fail if the file already exists. Asks the user to confirm.",
-        "userDescription": "Write a file in your workspace (with confirmation).",
+        "modelDescription": "Create a NEW file with full content. Refuses to overwrite an existing file unless overwrite:true is set with the COMPLETE file content. To change part of an existing file, use replace_lines or apply_diff. Staged for diff review.",
+        "userDescription": "Create a new file (staged for review).",
         "toolReferenceName": "write_file",
         "canBeReferencedInPrompt": true,
         "tags": [
@@ -620,11 +661,11 @@
             },
             "content": {
               "type": "string",
-              "description": "Full file contents to write (UTF-8)."
+              "description": "Full file contents (UTF-8). For an existing file, the ENTIRE file, not a fragment."
             },
-            "createOnly": {
+            "overwrite": {
               "type": "boolean",
-              "description": "If true, fail when the file already exists."
+              "description": "Required (true) to replace an existing file entirely. Default false."
             }
           },
           "required": [

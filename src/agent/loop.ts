@@ -406,8 +406,10 @@ export class AgentLoop {
       return true;
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      options.stream.markdown(`❌ \`${name}\` failed: ${escapeBackticks(msg)}\n`);
-      this.logger.warn(`agent: tool '${name}' failed`, err);
+      const short = msg.split('\n')[0];
+      options.stream.markdown(`❌ \`${name}\` failed: ${escapeBackticks(short)}\n`);
+      // The tool wrapper already logged this at WARN; keep this quiet (debug).
+      this.logger.debug(`agent: tool '${name}' failed: ${short}`);
       failedCache.set(signature, msg);
       pushTool(`Error: ${msg}`);
       return false;

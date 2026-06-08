@@ -4,6 +4,41 @@ All notable changes to Bosch-CoPilot will be documented here. This project follo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.2] - 2026-06-08
+
+### Fixed — data loss on file edits (critical)
+- **`write_file` no longer wipes existing files.** It now REFUSES to overwrite
+  an existing file unless `overwrite: true` is passed with the complete
+  content, and steers the model to `replace_lines` / `apply_diff` for partial
+  edits. Previously a model that fell back to `write_file` with only a fragment
+  (e.g. one method) replaced the **entire** file with that fragment — applying
+  the diff then deleted the rest of the file.
+- Removed the v0.6.1 "use write_file for big rewrites" guidance that triggered
+  this; replaced with line-based editing (below).
+
+### Added — `replace_lines` (reliable code editing)
+- New **`replace_lines(path, startLine, endLine, newText)`** tool — edits an
+  exact 1-based line range with NO text matching, so it is immune to the
+  whitespace/quote/approximation mismatches that made `apply_diff` fail on
+  HTML/Angular. It only touches the named lines; the rest of the file is
+  preserved (cannot wipe a file). Pairs with `read_file_range` /
+  `document_outline`, which report line numbers. **14 tools total.**
+- This is now the recommended editor for multi-line changes; `apply_diff` is
+  for tiny exact-text edits; `write_file` is for NEW files only.
+
+### Added — safety net in diff review
+- The **Proposed changes** block now flags edits that remove many more lines
+  than they add (`⚠️ large deletion, review carefully`) — catches a model
+  accidentally producing partial content before you Apply.
+
+### Changed — quieter logs
+- Recoverable tool failures now log at **warn**, single-line message, no stack
+  traces (the agent reads the error and recovers — the Output channel no longer
+  fills with alarming red stack dumps).
+
+### Removed
+- Dropped `Co-Authored-By` trailers from commit messages.
+
 ## [0.6.1] - 2026-06-03
 
 ### Fixed — apply_diff reliability (the big one)

@@ -219,16 +219,34 @@ function renderEditReview(
       `to disk until you apply.\n\n`
   );
 
+  let anyRisky = false;
   for (const e of staged) {
     const kind = e.kind === 'create' ? '🆕 new' : '✏️ edit';
+    // Flag edits that remove a lot more than they add — a classic sign of a
+    // model passing partial content (which would delete the rest of a file).
+    const risky =
+      e.kind === 'modify' && e.removed >= 40 && e.removed > e.added * 2;
+    anyRisky = anyRisky || risky;
+    const warn = risky
+      ? ' — ⚠️ **large deletion, review carefully before applying**'
+      : '';
     stream.markdown(
-      `- ${kind} \`${e.relPath}\` — +${e.added} / −${e.removed}\n`
+      `- ${kind} \`${e.relPath}\` — +${e.added} / −${e.removed}${warn}\n`
     );
     stream.button({
       command: 'bosch-copilot.openProposedDiff',
       title: `Open Diff: ${shortName(e.relPath)}`,
       arguments: [e.id],
     });
+  }
+
+  if (anyRisky) {
+    stream.markdown(
+      `\n> ⚠️ One or more edits **remove many more lines than they add**. ` +
+        `This can happen if the assistant accidentally produced partial ` +
+        `content. **Open the diff and verify** nothing important is deleted ` +
+        `before clicking Apply.\n`
+    );
   }
 
   stream.button({

@@ -14,8 +14,9 @@ import { documentOutlineTool } from './documentOutline';
 import { findReferencesTool } from './findReferences';
 import { goToDefinitionTool } from './goToDefinition';
 // Mutating tools (staged for diff review)
-import { writeFileTool } from './writeFile';
+import { replaceLinesTool } from './replaceLines';
 import { applyDiffTool } from './applyDiff';
+import { writeFileTool } from './writeFile';
 import { runTerminalTool } from './runTerminal';
 // Interaction
 import { askFollowupTool } from './askFollowup';
@@ -35,8 +36,9 @@ const ALL_TOOLS: Array<ToolDefinition<any>> = [
   findReferencesTool,
   goToDefinitionTool,
   // mutate (staged for diff review)
-  writeFileTool,
+  replaceLinesTool,
   applyDiffTool,
+  writeFileTool,
   runTerminalTool,
   // interaction
   askFollowupTool,
@@ -102,9 +104,12 @@ function wrapWithLogging<TInput>(
         );
         return result;
       } catch (err) {
-        logger.error(
-          `tool:${name} ✗ failed (${Date.now() - started}ms)`,
-          err
+        // Tool failures are usually recoverable (the agent reads the error
+        // and retries differently), so log at WARN with just the message —
+        // no alarming stack dumps in the user's Output channel.
+        const msg = err instanceof Error ? err.message : String(err);
+        logger.warn(
+          `tool:${name} ✗ failed (${Date.now() - started}ms): ${firstLine(msg)}`
         );
         throw err;
       }
@@ -124,6 +129,12 @@ function previewArgs(input: unknown): string {
   } catch {
     return '[unserialisable args]';
   }
+}
+
+/** First line of a (possibly multi-line) message, for compact logging. */
+function firstLine(s: string): string {
+  const nl = s.indexOf('\n');
+  return nl >= 0 ? s.slice(0, nl) + ' …' : s;
 }
 
 function measureResultChars(result: vscode.LanguageModelToolResult): number {
